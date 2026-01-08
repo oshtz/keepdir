@@ -33,6 +33,7 @@ import {
 } from "../hooks/useKeyboardShortcuts";
 import useBackgroundFetch from "../hooks/useBackgroundFetch";
 import OperationHistoryPanel from "./OperationHistoryPanel";
+import UpdateStatus from "./UpdateStatus";
 
 interface SettingsProps {
   open: boolean;
@@ -1953,6 +1954,24 @@ const Settings: React.FC<SettingsProps> = ({
       case "history":
         return <OperationHistoryPanel />;
 
+      case "about":
+        return (
+          <Box>
+            <Typography
+              variant="h6"
+              gutterBottom
+              sx={{
+                mb: 2,
+                color: "text.primary",
+                fontFamily: "var(--font-header)",
+              }}
+            >
+              About & Updates
+            </Typography>
+            <UpdateStatus darkMode={darkMode} />
+          </Box>
+        );
+
       default:
         return null;
     }
@@ -2030,6 +2049,7 @@ const Settings: React.FC<SettingsProps> = ({
             { id: "airules", label: "AI Rules & Presets", icon: null },
             { id: "providers", label: "AI Providers", icon: null },
             { id: "shortcuts", label: "Keyboard Shortcuts", icon: null },
+            { id: "about", label: "About & Updates", icon: null },
           ]}
         />
 

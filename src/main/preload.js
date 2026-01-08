@@ -69,5 +69,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onAnalyzeProgress: createEventHandler('analyze-progress'),
   onRenameProgress: createEventHandler('rename-progress'),
   onSortProgress: createEventHandler('sort-progress'),
-  onOllamaModelPullProgress: createEventHandler('ollama-model-pull-progress')
+  onOllamaModelPullProgress: createEventHandler('ollama-model-pull-progress'),
+
+  // Auto-update operations
+  getAppVersion: () => ipcRenderer.invoke('get-app-version'),
+  checkForUpdate: () => ipcRenderer.invoke('check-for-update'),
+  downloadUpdate: (updateInfo) => ipcRenderer.invoke('download-update', updateInfo),
+  installUpdate: (updatePath) => ipcRenderer.invoke('install-update', updatePath),
+  onUpdateDownloadProgress: createEventHandler('update-download-progress')
 });

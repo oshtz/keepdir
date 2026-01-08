@@ -62,6 +62,21 @@ export interface OllamaModelInfo {
   name: string;
 }
 
+export interface UpdateInfo {
+  version: string;
+  notes: string | null;
+  publishedAt: string | null;
+  downloadUrl: string;
+  assetName?: string;
+  assetSize?: number;
+}
+
+export interface UpdateDownloadProgress {
+  percent: number;
+  downloaded: number;
+  total: number;
+}
+
 export interface FolderItem {
   name: string;
   path: string;
@@ -132,6 +147,13 @@ export interface ElectronAPI {
   listOllamaModels: () => Promise<{ models?: OllamaModelInfo[], error?: string }>;
   deleteOllamaModel: (modelName: string) => Promise<{ success?: boolean, error?: string }>;
   onOllamaModelPullProgress: (callback: (progress: OllamaProgressInfo) => void) => () => void;
+
+  // Auto-update operations
+  getAppVersion: () => Promise<string>;
+  checkForUpdate: () => Promise<{ updateInfo?: UpdateInfo | null, error?: string }>;
+  downloadUpdate: (updateInfo: UpdateInfo) => Promise<{ updatePath?: string, error?: string }>;
+  installUpdate: (updatePath: string) => Promise<{ success?: boolean, error?: string }>;
+  onUpdateDownloadProgress: (callback: (progress: UpdateDownloadProgress) => void) => () => void;
 }
 
 declare global {
