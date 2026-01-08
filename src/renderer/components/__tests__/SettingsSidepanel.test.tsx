@@ -1,0 +1,143 @@
+import React from 'react';
+import { render, screen, fireEvent } from '@testing-library/react';
+import SettingsSidepanel from '../SettingsSidepanel';
+
+describe('SettingsSidepanel', () => {
+  const mockTabs = [
+    { id: 'general', label: 'General', icon: null },
+    { id: 'themes', label: 'Workspace Themes', icon: null },
+    { id: 'workspace', label: 'Workspace', icon: null },
+    { id: 'sections', label: 'Custom Sections', icon: null },
+    { id: 'api', label: 'API Keys', icon: null },
+    { id: 'ollama', label: 'Ollama', icon: null },
+    { id: 'shortcuts', label: 'Keyboard Shortcuts', icon: null }
+  ];
+
+  const defaultProps = {
+    tabs: mockTabs,
+    activeTab: 'general',
+    onTabChange: jest.fn(),
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('should render all tabs', () => {
+    render(<SettingsSidepanel {...defaultProps} />);
+    
+    mockTabs.forEach(tab => {
+      expect(screen.getByText(tab.label)).toBeInTheDocument();
+    });
+  });
+
+  it('should render Settings header', () => {
+    render(<SettingsSidepanel {...defaultProps} />);
+    
+    expect(screen.getByText('Settings')).toBeInTheDocument();
+  });
+
+  it('should highlight active tab', () => {
+    render(<SettingsSidepanel {...defaultProps} activeTab="api" />);
+    
+    const apiTab = screen.getByText('API Keys').closest('[role="button"]');
+    expect(apiTab).toHaveClass('Mui-selected');
+  });
+
+  it('should call onTabChange when tab is clicked', () => {
+    const onTabChange = jest.fn();
+    render(<SettingsSidepanel {...defaultProps} onTabChange={onTabChange} />);
+    
+    const workspaceTab = screen.getByText('Workspace');
+    fireEvent.click(workspaceTab);
+    
+    expect(onTabChange).toHaveBeenCalledWith('workspace');
+  });
+
+  it('should render with custom tabs', () => {
+    const customTabs = [
+      { id: 'custom1', label: 'Custom Tab 1', icon: null },
+      { id: 'custom2', label: 'Custom Tab 2', icon: null },
+    ];
+
+    render(<SettingsSidepanel {...defaultProps} tabs={customTabs} />);
+    
+    expect(screen.getByText('Custom Tab 1')).toBeInTheDocument();
+    expect(screen.getByText('Custom Tab 2')).toBeInTheDocument();
+  });
+
+  it('should handle empty tabs array', () => {
+    render(<SettingsSidepanel {...defaultProps} tabs={[]} />);
+    
+    expect(screen.getByText('Settings')).toBeInTheDocument();
+    // Should not crash with empty tabs
+  });
+
+  it('should apply correct styling for selected tab', () => {
+    render(<SettingsSidepanel {...defaultProps} activeTab="themes" />);
+    
+    const themesTab = screen.getByText('Workspace Themes').closest('[role="button"]');
+    expect(themesTab).toHaveClass('Mui-selected');
+    
+    const generalTab = screen.getByText('General').closest('[role="button"]');
+    expect(generalTab).not.toHaveClass('Mui-selected');
+  });
+
+  it('should handle tab change for all tabs', () => {
+    const onTabChange = jest.fn();
+    render(<SettingsSidepanel {...defaultProps} onTabChange={onTabChange} />);
+    
+    mockTabs.forEach(tab => {
+      const tabElement = screen.getByText(tab.label);
+      fireEvent.click(tabElement);
+      expect(onTabChange).toHaveBeenCalledWith(tab.id);
+    });
+    
+    expect(onTabChange).toHaveBeenCalledTimes(mockTabs.length);
+  });
+
+  it('should render with proper accessibility attributes', () => {
+    render(<SettingsSidepanel {...defaultProps} />);
+    
+    const buttons = screen.getAllByRole('button');
+    expect(buttons.length).toBe(mockTabs.length);
+    
+    buttons.forEach(button => {
+      expect(button).toBeInTheDocument();
+    });
+  });
+
+  it('should handle activeTab that does not exist in tabs', () => {
+    render(<SettingsSidepanel {...defaultProps} activeTab="nonexistent" />);
+    
+    // Should not crash and should render all tabs
+    mockTabs.forEach(tab => {
+      expect(screen.getByText(tab.label)).toBeInTheDocument();
+    });
+    
+    // No tab should be selected
+    const buttons = screen.getAllByRole('button');
+    buttons.forEach(button => {
+      expect(button).not.toHaveClass('Mui-selected');
+    });
+  });
+
+  it('should use default tabs when tabs prop uses default values', () => {
+    const propsWithDefaultTabs = {
+      tabs: mockTabs, // Using the same default tabs
+      activeTab: 'general',
+      onTabChange: jest.fn(),
+    };
+    
+    render(<SettingsSidepanel {...propsWithDefaultTabs} />);
+    
+    // Should render default tabs
+    expect(screen.getByText('General')).toBeInTheDocument();
+    expect(screen.getByText('Workspace Themes')).toBeInTheDocument();
+    expect(screen.getByText('Workspace')).toBeInTheDocument();
+    expect(screen.getByText('Custom Sections')).toBeInTheDocument();
+    expect(screen.getByText('API Keys')).toBeInTheDocument();
+    expect(screen.getByText('Ollama')).toBeInTheDocument();
+    expect(screen.getByText('Keyboard Shortcuts')).toBeInTheDocument();
+  });
+});
