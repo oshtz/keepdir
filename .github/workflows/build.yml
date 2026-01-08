@@ -1,0 +1,258 @@
+name: Build and Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build webpack bundle
+        run: npm run build
+
+      - name: Package Electron app
+        run: npm run package
+
+      - name: Create portable zip
+        shell: pwsh
+        run: |
+          $packagedDir = Get-ChildItem -Path "out" -Directory | Where-Object { $_.Name -like "keepdir-win32-*" } | Select-Object -First 1
+          if (-not $packagedDir) {
+            throw "Packaged app directory not found in out/"
+          }
+          Write-Host "Found packaged app: $($packagedDir.FullName)"
+
+          # Rename the folder to just "keepdir-portable"
+          $portableDir = Join-Path $PWD "keepdir-portable"
+          Copy-Item -Path $packagedDir.FullName -Destination $portableDir -Recurse
+
+          # Create zip file
+          $zipPath = Join-Path $PWD "keepdir-portable-windows.zip"
+          Compress-Archive -Path $portableDir -DestinationPath $zipPath -Force
+
+          $size = [math]::Round((Get-Item $zipPath).Length / 1MB, 2)
+          Write-Host "Portable zip created: $size MB"
+
+      - name: Upload portable zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: keepdir-portable-windows
+          path: keepdir-portable-windows.zip
+
+      - name: Determine release tag
+        id: release_tag
+        if: github.ref == 'refs/heads/main'
+        shell: pwsh
+        run: |
+          $version = (Get-Content package.json | ConvertFrom-Json).version
+          if (-not $version) { throw "package.json version not found" }
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "tag=v$version" >> $env:GITHUB_OUTPUT
+
+      - name: Check for existing release
+        id: release_check
+        if: github.ref == 'refs/heads/main'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const tag = '${{ steps.release_tag.outputs.tag }}';
+            try {
+              await github.rest.repos.getReleaseByTag({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                tag
+              });
+              core.setOutput('exists', 'true');
+            } catch (error) {
+              core.setOutput('exists', 'false');
+            }
+
+      - name: Create GitHub release
+        if: github.ref == 'refs/heads/main' && steps.release_check.outputs.exists != 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.release_tag.outputs.tag }}
+          name: Release ${{ steps.release_tag.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          generate_release_notes: true
+          files: keepdir-portable-windows.zip
+
+      - name: Upload to existing release
+        if: github.ref == 'refs/heads/main' && steps.release_check.outputs.exists == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.release_tag.outputs.tag }}
+          files: keepdir-portable-windows.zip
+
+  build-macos:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build webpack bundle
+        run: npm run build
+
+      - name: Import Apple certificate
+        if: github.ref == 'refs/heads/main'
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          if [ -z "$APPLE_CERTIFICATE" ] || [ -z "$APPLE_CERTIFICATE_PASSWORD" ]; then
+            echo "::warning::Missing Apple signing secrets. Building unsigned app."
+            exit 0
+          fi
+
+          KEYCHAIN_PASSWORD="$(uuidgen)"
+          KEYCHAIN_PATH="$RUNNER_TEMP/build.keychain"
+
+          echo "$APPLE_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          security import "$RUNNER_TEMP/certificate.p12" -k "$KEYCHAIN_PATH" -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          security list-keychains -d user -s "$KEYCHAIN_PATH" "login.keychain-db"
+          security default-keychain -s "$KEYCHAIN_PATH"
+
+          security find-identity -v -p codesigning "$KEYCHAIN_PATH"
+
+          echo "KEYCHAIN_PATH=$KEYCHAIN_PATH" >> $GITHUB_ENV
+          echo "Certificate imported successfully"
+
+      - name: Build and sign macOS app
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          if [ -n "$APPLE_SIGNING_IDENTITY" ]; then
+            export OSX_SIGN_IDENTITY="$APPLE_SIGNING_IDENTITY"
+          fi
+          npm run make -- --platform darwin
+
+      - name: Notarize macOS app
+        if: github.ref == 'refs/heads/main'
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          if [ -z "$APPLE_ID" ] || [ -z "$APPLE_PASSWORD" ] || [ -z "$APPLE_TEAM_ID" ]; then
+            echo "::warning::Missing notarization secrets. Skipping notarization."
+            exit 0
+          fi
+
+          ZIP_FILE=$(find out/make -name "*.zip" -type f | head -1)
+          if [ -z "$ZIP_FILE" ]; then
+            echo "::warning::No zip file found for notarization"
+            exit 0
+          fi
+
+          echo "Notarizing: $ZIP_FILE"
+
+          xcrun notarytool store-credentials "notarytool-profile" \
+            --apple-id "$APPLE_ID" \
+            --team-id "$APPLE_TEAM_ID" \
+            --password "$APPLE_PASSWORD"
+
+          xcrun notarytool submit "$ZIP_FILE" \
+            --keychain-profile "notarytool-profile" \
+            --wait
+
+          echo "Notarization completed"
+
+      - name: Upload macOS artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: keepdir-macos
+          path: |
+            out/make/**/*.zip
+            out/make/**/*.dmg
+
+      - name: Determine release tag
+        id: release_tag
+        if: github.ref == 'refs/heads/main'
+        run: |
+          version=$(node -p "require('./package.json').version")
+          if [ -z "$version" ]; then
+            echo "package.json version not found"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=v$version" >> "$GITHUB_OUTPUT"
+
+      - name: Check for existing release
+        id: release_check
+        if: github.ref == 'refs/heads/main'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const tag = '${{ steps.release_tag.outputs.tag }}';
+            try {
+              await github.rest.repos.getReleaseByTag({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                tag
+              });
+              core.setOutput('exists', 'true');
+            } catch (error) {
+              core.setOutput('exists', 'false');
+            }
+
+      - name: Create GitHub release
+        if: github.ref == 'refs/heads/main' && steps.release_check.outputs.exists != 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.release_tag.outputs.tag }}
+          name: Release ${{ steps.release_tag.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          generate_release_notes: true
+          files: |
+            out/make/**/*.zip
+            out/make/**/*.dmg
+
+      - name: Upload to existing release
+        if: github.ref == 'refs/heads/main' && steps.release_check.outputs.exists == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.release_tag.outputs.tag }}
+          files: |
+            out/make/**/*.zip
+            out/make/**/*.dmg
+
+      - name: Cleanup keychain
+        if: always()
+        run: |
+          if [ -n "$KEYCHAIN_PATH" ] && [ -f "$KEYCHAIN_PATH" ]; then
+            security delete-keychain "$KEYCHAIN_PATH" || true
+          fi
