@@ -4,6 +4,7 @@ const path = require('path');
 const axios = require('axios');
 const { spawn } = require('child_process');
 const Database = require('./database');
+const updater = require('./updater');
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (require('electron-squirrel-startup')) {
@@ -1314,6 +1315,26 @@ function createWindow() {
       };
     }
   });
+
+  // Auto-update handlers
+  ipcMain.handle('get-app-version', () => {
+    return app.getVersion();
+  });
+
+  ipcMain.handle('check-for-update', async () => {
+    return await updater.checkForUpdate(mainWindow);
+  });
+
+  ipcMain.handle('download-update', async (event, updateInfo) => {
+    return await updater.downloadUpdate(updateInfo, mainWindow);
+  });
+
+  ipcMain.handle('install-update', async (event, updatePath) => {
+    return await updater.installUpdate(updatePath);
+  });
+
+  // Cleanup old updates on startup
+  updater.cleanupUpdates();
 }
 
 // This method will be called when Electron has finished initialization

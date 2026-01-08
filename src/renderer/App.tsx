@@ -8,7 +8,9 @@ import DirectoryExplorer from "./components/DirectoryExplorer";
 import CircularProgress from "@mui/material/CircularProgress";
 import { WorkspaceProvider, useWorkspace } from "./contexts/WorkspaceContext";
 import { OperationHistoryProvider } from "./contexts/OperationHistoryContext";
+import { UpdateProvider } from "./contexts/UpdateContext";
 import { ToastProvider } from "./components/ToastNotification";
+import AutoUpdater from "./components/AutoUpdater";
 import {
   SelectChangeEvent,
   FormControl,
@@ -990,9 +992,12 @@ const App: React.FC = () => {
   return (
     <WorkspaceProvider>
       <OperationHistoryProvider>
-        <ToastProvider>
-          <AppContent />
-        </ToastProvider>
+        <UpdateProvider>
+          <ToastProvider>
+            <AutoUpdater />
+            <AppContent />
+          </ToastProvider>
+        </UpdateProvider>
       </OperationHistoryProvider>
     </WorkspaceProvider>
   );
