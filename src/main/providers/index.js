@@ -15,11 +15,14 @@ const providers = {
 };
 
 function getProvider(name) {
+  if (!Object.prototype.hasOwnProperty.call(providers, name)) {
+    return undefined;
+  }
   return providers[name];
 }
 
 function getAllProviders() {
-  return providers;
+  return { ...providers };
 }
 
 module.exports = {

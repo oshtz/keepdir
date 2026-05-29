@@ -154,6 +154,7 @@ export interface ElectronAPI {
   applySuggestions: (path: string, suggestions: SortSuggestions) => Promise<SortApplyResult>;
   applyRenames: (path: string, suggestions: RenameSuggestions) => Promise<RenameApplyResult>;
   openFile: (path: string) => Promise<{ success?: boolean, error?: string }>;
+  revealInFolder: (path: string) => Promise<{ success?: boolean, error?: string }>;
   
   // Database optimization operations
   getCacheStats: () => Promise<{ success?: boolean, stats?: any, error?: string }>;

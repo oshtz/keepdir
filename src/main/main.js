@@ -9,6 +9,14 @@ const {
   applyRenameSuggestions,
   applySortSuggestions
 } = require('./fileOperations');
+const {
+  normalizeCacheAgeHours,
+  normalizeOllamaModelName,
+  normalizeProviderName,
+  normalizeSelectedPaths,
+  requireExistingDirectoryPath,
+  requireExistingFileOrDirectoryPath
+} = require('./ipcValidation');
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (require('electron-squirrel-startup')) {
@@ -65,7 +73,8 @@ registerHandler('get-database-stats', async () => {
 
 registerHandler('cleanup-cache', async (event, maxAgeHours = 168) => {
   try {
-    await db.cleanupCache(maxAgeHours);
+    const normalizedMaxAgeHours = normalizeCacheAgeHours(maxAgeHours);
+    await db.cleanupCache(normalizedMaxAgeHours);
     return { success: true };
   } catch (error) {
     console.error('Failed to cleanup cache:', error);
@@ -85,16 +94,17 @@ registerHandler('optimize-database', async () => {
 
 registerHandler('get-provider-models', async (_event, providerName) => {
   try {
+    const normalizedProviderName = normalizeProviderName(providerName);
     const settings = await db.getAllSettings();
     const { getProvider } = require('./providers');
-    const provider = getProvider(providerName);
+    const provider = getProvider(normalizedProviderName);
 
     if (!provider) {
-      return { error: `Provider ${providerName} not found` };
+      return { error: `Provider ${normalizedProviderName} not found` };
     }
 
     const defaultModel = provider.defaultModel;
-    const apiKey = settings.apiKeys?.[providerName];
+    const apiKey = settings.apiKeys?.[normalizedProviderName];
     const displayNames = {
       openai: 'OpenAI',
       anthropic: 'Anthropic',
@@ -104,9 +114,9 @@ registerHandler('get-provider-models', async (_event, providerName) => {
       lmstudio: 'LM Studio'
     };
 
-    if (!['ollama', 'lmstudio'].includes(providerName) && !apiKey) {
+    if (!['ollama', 'lmstudio'].includes(normalizedProviderName) && !apiKey) {
       return {
-        error: `Please configure your ${displayNames[providerName] || providerName} API key in settings`,
+        error: `Please configure your ${displayNames[normalizedProviderName] || normalizedProviderName} API key in settings`,
         defaultModel
       };
     }
@@ -191,7 +201,11 @@ function createWindow() {
   // Handler for opening files with system default application
   registerHandler('open-file', async (event, filePath) => {
     try {
-      await require('electron').shell.openPath(filePath);
+      const safeFilePath = await requireExistingFileOrDirectoryPath(filePath, 'File path');
+      const openError = await shell.openPath(safeFilePath);
+      if (openError) {
+        return { error: openError };
+      }
       return { success: true };
     } catch (error) {
       console.error('Failed to open file:', error);
@@ -202,7 +216,8 @@ function createWindow() {
   // Reveal item in OS file explorer
   registerHandler('reveal-in-folder', async (_event, filePath) => {
     try {
-      shell.showItemInFolder(filePath);
+      const safeFilePath = await requireExistingFileOrDirectoryPath(filePath, 'File path');
+      shell.showItemInFolder(safeFilePath);
       return { success: true };
     } catch (error) {
       console.error('Failed to reveal in folder:', error);
@@ -211,12 +226,13 @@ function createWindow() {
   });
 
   registerHandler('load-directory', async (event, directoryPath) => {
-    debugLog(`Loading directory: ${directoryPath}`);
     try {
-      const items = await fs.readdir(directoryPath, { withFileTypes: true });
+      const safeDirectoryPath = await requireExistingDirectoryPath(directoryPath);
+      debugLog(`Loading directory: ${safeDirectoryPath}`);
+      const items = await fs.readdir(safeDirectoryPath, { withFileTypes: true });
       const files = await Promise.all(items.map(async (item) => {
-        const fullPath = path.join(directoryPath, item.name);
-        const stats = await fs.stat(fullPath);
+        const fullPath = path.join(safeDirectoryPath, item.name);
+        const stats = await fs.lstat(fullPath);
         return {
           name: item.name,
           path: fullPath,
@@ -244,8 +260,9 @@ function createWindow() {
 
   // Ollama model pull handler
   registerHandler('pull-ollama-model', async (event, modelName) => {
+    const safeModelName = normalizeOllamaModelName(modelName);
     return new Promise((resolve, reject) => {
-      const ollamaProcess = spawn('ollama', ['pull', modelName]);
+      const ollamaProcess = spawn('ollama', ['pull', safeModelName]);
       let error = '';
 
       ollamaProcess.stdout.on('data', (data) => {
@@ -295,12 +312,15 @@ function createWindow() {
   });
 
   registerHandler('delete-ollama-model', async (_event, modelName) => {
-    if (!modelName) {
-      return { error: 'Model name is required.' };
+    let safeModelName;
+    try {
+      safeModelName = normalizeOllamaModelName(modelName);
+    } catch (error) {
+      return { error: error.message };
     }
 
     return new Promise((resolve) => {
-      const ollamaProcess = spawn('ollama', ['rm', modelName]);
+      const ollamaProcess = spawn('ollama', ['rm', safeModelName]);
       let error = '';
 
       ollamaProcess.stderr.on('data', (data) => {
@@ -647,6 +667,9 @@ function createWindow() {
   // AI File Analysis handlers with caching
   async function analyzeDirectory(sender, directoryPath, renameFiles, selectedPaths, forceRefresh = false) {
     try {
+      directoryPath = await requireExistingDirectoryPath(directoryPath);
+      selectedPaths = normalizeSelectedPaths(selectedPaths, directoryPath);
+
       const files = await fs.readdir(directoryPath, { withFileTypes: true });
       let allFiles;
 
@@ -737,7 +760,7 @@ function createWindow() {
 
       // Get settings from database
       const settings = await db.getAllSettings();
-      const provider = settings.selectedProvider || 'openai';
+      const provider = normalizeProviderName(settings.selectedProvider || 'openai');
       const apiKey = settings.apiKeys?.[provider];
 
       // Ollama doesn't require an API key since it runs locally
@@ -1090,23 +1113,48 @@ function createWindow() {
   }
 
   // Handler for applying suggestions with batch processing
-  registerHandler('apply-suggestions', async (event, { directoryPath, suggestions }) => {
-    return applySortSuggestions({
-      directoryPath,
-      suggestions,
-      db,
-      onProgress: (channel, payload) => event.sender.send(channel, payload)
-    });
+  registerHandler('apply-suggestions', async (event, payload = {}) => {
+    try {
+      const directoryPath = await requireExistingDirectoryPath(payload.directoryPath);
+      return applySortSuggestions({
+        directoryPath,
+        suggestions: payload.suggestions,
+        db,
+        onProgress: (channel, progressPayload) => event.sender.send(channel, progressPayload)
+      });
+    } catch (error) {
+      return {
+        success: false,
+        partial: false,
+        movedFiles: [],
+        errors: [{ file: 'unknown', error: error.message }],
+        error: error.message
+      };
+    }
   });
 
   // Handler for applying renames with batch processing
-  registerHandler('apply-renames', async (event, { directoryPath, suggestions }) => {
-    return applyRenameSuggestions({
-      directoryPath,
-      suggestions,
-      db,
-      onProgress: (channel, payload) => event.sender.send(channel, payload)
-    });
+  registerHandler('apply-renames', async (event, payload = {}) => {
+    try {
+      const directoryPath = await requireExistingDirectoryPath(payload.directoryPath);
+      return applyRenameSuggestions({
+        directoryPath,
+        suggestions: payload.suggestions,
+        db,
+        onProgress: (channel, progressPayload) => event.sender.send(channel, progressPayload)
+      });
+    } catch (error) {
+      return {
+        success: false,
+        partial: false,
+        error: error.message,
+        renamedFiles: [],
+        errors: [{
+          file: 'unknown',
+          error: error.message
+        }]
+      };
+    }
   });
 
   // Auto-update handlers
@@ -1132,8 +1180,8 @@ function createWindow() {
 
 // This method will be called when Electron has finished initialization
 if (app) {
-debugLog('App exists');
-app.whenReady().then(() => {
+  debugLog('App exists');
+  app.whenReady().then(() => {
     debugLog('App ready');
     createWindow();
 
