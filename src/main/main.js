@@ -15,7 +15,7 @@ const {
   normalizeCacheAgeHours,
   normalizeOllamaModelName,
   normalizeProviderName,
-  normalizeSelectedPaths,
+  normalizeSelectedAnalysisEntries,
   requireExistingDirectoryPath,
   requireExistingFileOrDirectoryPath
 } = require('./ipcValidation');
@@ -48,6 +48,12 @@ const debugLog = (...args) => {
     console.log(...args);
   }
 };
+
+function normalizeAnalysisPath(filePath) {
+  return Buffer.from(filePath.replace(/\\/g, '/'), 'utf8')
+    .toString()
+    .normalize('NFC');
+}
 
 // Enable debug logging only in development
 if (isDev) {
@@ -695,36 +701,39 @@ function createWindow() {
   async function analyzeDirectory(sender, directoryPath, renameFiles, selectedPaths, forceRefresh = false) {
     try {
       directoryPath = await requireExistingDirectoryPath(directoryPath);
-      selectedPaths = normalizeSelectedPaths(selectedPaths, directoryPath);
+      const selectedFileEntries = await normalizeSelectedAnalysisEntries(selectedPaths, directoryPath);
 
-      const files = await fs.readdir(directoryPath, { withFileTypes: true });
-      let allFiles;
+      let allFileEntries;
 
-      if (selectedPaths && selectedPaths.length > 0) {
-        // If selectedPaths is provided, only process those files
-        allFiles = selectedPaths.map(filePath => path.basename(filePath));
+      if (selectedFileEntries && selectedFileEntries.length > 0) {
+        // If selectedPaths is provided, only process those validated direct-child files.
+        allFileEntries = selectedFileEntries;
       } else {
         // Otherwise process all non-directory files
-        allFiles = files
+        const files = await fs.readdir(directoryPath, { withFileTypes: true });
+        allFileEntries = files
           .filter(isAnalyzableDirectoryEntry)
-          .map(file => file.name);
+          .map(file => ({
+            name: file.name,
+            path: path.join(directoryPath, file.name)
+          }));
       }
 
-      // Get list of unprocessed files with proper encoding
-      const filePaths = allFiles.map(name => {
-        // Ensure proper encoding of Hebrew characters in path
-        const encodedName = Buffer.from(name, 'utf8').toString();
-        return path.join(directoryPath, encodedName);
-      });
+      const filePaths = allFileEntries.map(entry => entry.path);
+      const fileEntryByPath = new Map(
+        allFileEntries.map(entry => [normalizeAnalysisPath(entry.path), entry])
+      );
 
       // Use the appropriate unprocessed files method based on operation
       const unprocessedPaths = renameFiles
         ? await db.getUnprocessedRenames(filePaths)
         : await db.getUnprocessedSorts(filePaths);
-      const unprocessedFiles = unprocessedPaths.map(p => Buffer.from(path.basename(p), 'utf8').toString());
+      const unprocessedEntries = unprocessedPaths
+        .map(filePath => fileEntryByPath.get(normalizeAnalysisPath(filePath)))
+        .filter(Boolean);
 
       // If all files are processed and not forcing refresh, return cached suggestions
-      if (unprocessedFiles.length === 0 && !forceRefresh) {
+      if (unprocessedEntries.length === 0 && !forceRefresh) {
         const cachedResults = await Promise.all(
           filePaths.map(async (filePath) => {
             const processed = renameFiles
@@ -779,7 +788,8 @@ function createWindow() {
       }
 
       // If forcing refresh, analyze all files regardless of cache status
-      const fileNames = forceRefresh ? allFiles.slice(0, 50) : unprocessedFiles.slice(0, 50);
+      const fileEntries = forceRefresh ? allFileEntries.slice(0, 50) : unprocessedEntries.slice(0, 50);
+      const fileNames = fileEntries.map(entry => entry.name);
 
       // Process files in smaller batches for API calls
       const BATCH_SIZE = 10;
@@ -917,7 +927,7 @@ function createWindow() {
         return { buffer: output, mimeType };
       };
 
-      const hasRenameImages = renameFiles && fileNames.some(name => imageFilePattern.test(name));
+      const hasRenameImages = renameFiles && fileEntries.some(entry => imageFilePattern.test(entry.name));
       if (hasRenameImages && !selectedProvider.supportsVision) {
         return { error: `${provider} does not support image inputs for rename suggestions.` };
       }
@@ -929,19 +939,18 @@ function createWindow() {
 
       // Process files in batches with progress updates
       for (let i = 0; i < fileNames.length; i += BATCH_SIZE) {
-        const batchFiles = fileNames.slice(i, i + BATCH_SIZE);
+        const batchFiles = fileEntries.slice(i, i + BATCH_SIZE);
 
         // Send analyze progress update
         sender.send('analyze-progress', {
           current: i,
           total: fileNames.length,
           status: 'Analyzing files...',
-          currentFile: batchFiles[0]
+          currentFile: batchFiles[0]?.name || null
         });
 
         // Get file details for the batch
-        const fileDetails = await Promise.all(batchFiles.map(async (fileName) => {
-          const filePath = path.join(directoryPath, fileName);
+        const fileDetails = await Promise.all(batchFiles.map(async ({ name: fileName, path: filePath }) => {
           const stats = await fs.lstat(filePath);
           assertNotSymbolicLink(stats, `Selected item ${fileName}`);
           let base64Content = '';

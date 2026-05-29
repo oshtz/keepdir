@@ -119,6 +119,35 @@ function assertNotSymbolicLink(stats, label = 'Path') {
   }
 }
 
+async function normalizeSelectedAnalysisEntries(selectedPaths, directoryPath) {
+  const normalizedPaths = normalizeSelectedPaths(selectedPaths, directoryPath);
+  if (!normalizedPaths || normalizedPaths.length === 0) {
+    return normalizedPaths;
+  }
+
+  return Promise.all(normalizedPaths.map(async (filePath, index) => {
+    let stats;
+    try {
+      stats = await fs.lstat(filePath);
+    } catch (error) {
+      if (error.code === 'ENOENT' || error.code === 'ENOTDIR') {
+        throw new Error(`Selected path ${index + 1} does not exist.`);
+      }
+      throw error;
+    }
+
+    assertNotSymbolicLink(stats, `Selected path ${index + 1}`);
+    if (!stats.isFile()) {
+      throw new Error(`Selected path ${index + 1} must be a file.`);
+    }
+
+    return {
+      name: path.basename(filePath),
+      path: filePath
+    };
+  }));
+}
+
 function isAnalyzableDirectoryEntry(entry) {
   return !entry.isDirectory() && !entry.isSymbolicLink();
 }
@@ -178,6 +207,7 @@ module.exports = {
   normalizeCacheAgeHours,
   normalizeOllamaModelName,
   normalizeProviderName,
+  normalizeSelectedAnalysisEntries,
   normalizeSelectedPaths,
   requireExistingDirectoryPath,
   requireExistingFileOrDirectoryPath,

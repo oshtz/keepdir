@@ -8,6 +8,7 @@ const {
   normalizeCacheAgeHours,
   normalizeOllamaModelName,
   normalizeProviderName,
+  normalizeSelectedAnalysisEntries,
   normalizeSelectedPaths,
   requireExistingDirectoryPath,
   requireExistingFileOrDirectoryPath
@@ -55,6 +56,19 @@ describe('main IPC validation', () => {
 
     expect(() => normalizeSelectedPaths('not-an-array', rootDir))
       .toThrow('must be an array');
+  });
+
+  it('normalizes selected analysis entries to existing direct files', async () => {
+    const nestedDir = path.join(rootDir, 'nested');
+    await fs.mkdir(nestedDir);
+
+    await expect(normalizeSelectedAnalysisEntries([filePath], rootDir)).resolves.toEqual([{
+      name: 'file.txt',
+      path: path.resolve(filePath)
+    }]);
+    await expect(normalizeSelectedAnalysisEntries([nestedDir], rootDir)).rejects.toThrow('must be a file');
+    await expect(normalizeSelectedAnalysisEntries([path.join(rootDir, 'missing.txt')], rootDir))
+      .rejects.toThrow('does not exist');
   });
 
   it('normalizes bounded cache cleanup windows', () => {
