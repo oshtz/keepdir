@@ -25,6 +25,16 @@ const {
   validateAllDataImport,
   validateWorkspaceImportData
 } = require('./importValidation');
+const {
+  normalizeCustomSectionData,
+  normalizeCustomSectionItem,
+  normalizeCustomSectionUpdates,
+  normalizeRecordId,
+  normalizeSettingsPayload,
+  normalizeWorkspace,
+  normalizeWorkspaceId,
+  normalizeWorkspaceSettingRequest
+} = require('./stateValidation');
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (require('electron-squirrel-startup')) {
@@ -369,7 +379,8 @@ function createWindow() {
 
   registerHandler('save-workspace', async (event, workspace) => {
     try {
-      await db.saveWorkspace(workspace);
+      const normalizedWorkspace = normalizeWorkspace(workspace);
+      await db.saveWorkspace(normalizedWorkspace);
       return { success: true };
     } catch (error) {
       console.error('Failed to save workspace:', error);
@@ -379,7 +390,8 @@ function createWindow() {
 
   registerHandler('delete-workspace', async (event, id) => {
     try {
-      await db.deleteWorkspace(id);
+      const workspaceId = normalizeWorkspaceId(id);
+      await db.deleteWorkspace(workspaceId);
       return { success: true };
     } catch (error) {
       console.error('Failed to delete workspace:', error);
@@ -390,7 +402,8 @@ function createWindow() {
   // Workspace settings handlers
   registerHandler('get-workspace-settings', async (event, workspaceId) => {
     try {
-      const settings = await db.getWorkspaceSettings(workspaceId);
+      const normalizedWorkspaceId = normalizeWorkspaceId(workspaceId);
+      const settings = await db.getWorkspaceSettings(normalizedWorkspaceId);
       return settings;
     } catch (error) {
       console.error('Failed to get workspace settings:', error);
@@ -398,8 +411,9 @@ function createWindow() {
     }
   });
 
-  registerHandler('get-workspace-setting', async (event, { workspaceId, key }) => {
+  registerHandler('get-workspace-setting', async (event, payload = {}) => {
     try {
+      const { workspaceId, key } = normalizeWorkspaceSettingRequest(payload);
       const value = await db.getWorkspaceSetting(workspaceId, key);
       return value;
     } catch (error) {
@@ -408,8 +422,11 @@ function createWindow() {
     }
   });
 
-  registerHandler('save-workspace-setting', async (event, { workspaceId, key, value }) => {
+  registerHandler('save-workspace-setting', async (event, payload = {}) => {
     try {
+      const { workspaceId, key, value } = normalizeWorkspaceSettingRequest(payload, {
+        requireValue: true
+      });
       await db.saveWorkspaceSetting(workspaceId, key, value);
       return { success: true };
     } catch (error) {
@@ -421,7 +438,8 @@ function createWindow() {
   // Settings handlers
   registerHandler('save-settings', async (event, settings) => {
     try {
-      await db.saveSettings(settings);
+      const normalizedSettings = normalizeSettingsPayload(settings);
+      await db.saveSettings(normalizedSettings);
       return { success: true };
     } catch (error) {
       console.error('Failed to save settings:', error);
@@ -443,7 +461,7 @@ function createWindow() {
       try {
         const settingsPath = path.join(app.getPath('userData'), 'settings.json');
         const data = await fs.readFile(settingsPath, 'utf8');
-        const jsonSettings = JSON.parse(data);
+        const jsonSettings = normalizeSettingsPayload(JSON.parse(data));
 
         // Save migrated settings to database
         await db.saveSettings(jsonSettings);
@@ -476,7 +494,8 @@ function createWindow() {
   // Workspace export/import handlers
   registerHandler('export-workspace', async (event, workspaceId) => {
     try {
-      const exportData = await db.exportWorkspace(workspaceId);
+      const normalizedWorkspaceId = normalizeWorkspaceId(workspaceId);
+      const exportData = await db.exportWorkspace(normalizedWorkspaceId);
 
       // Show save dialog
       const result = await dialog.showSaveDialog(mainWindow, {
@@ -585,7 +604,8 @@ function createWindow() {
   // Custom sections handlers
   registerHandler('get-custom-sections', async (event, workspaceId) => {
     try {
-      const sections = await db.getCustomSections(workspaceId);
+      const normalizedWorkspaceId = normalizeWorkspaceId(workspaceId);
+      const sections = await db.getCustomSections(normalizedWorkspaceId);
       return { success: true, sections };
     } catch (error) {
       console.error('Failed to get custom sections:', error);
@@ -595,7 +615,9 @@ function createWindow() {
 
   registerHandler('create-custom-section', async (event, workspaceId, sectionData) => {
     try {
-      const section = await db.createCustomSection(workspaceId, sectionData);
+      const normalizedWorkspaceId = normalizeWorkspaceId(workspaceId);
+      const normalizedSectionData = normalizeCustomSectionData(sectionData);
+      const section = await db.createCustomSection(normalizedWorkspaceId, normalizedSectionData);
       return { success: true, section };
     } catch (error) {
       console.error('Failed to create custom section:', error);
@@ -605,7 +627,9 @@ function createWindow() {
 
   registerHandler('update-custom-section', async (event, sectionId, updates) => {
     try {
-      await db.updateCustomSection(sectionId, updates);
+      const normalizedSectionId = normalizeRecordId(sectionId, 'Custom section id');
+      const normalizedUpdates = normalizeCustomSectionUpdates(updates);
+      await db.updateCustomSection(normalizedSectionId, normalizedUpdates);
       return { success: true };
     } catch (error) {
       console.error('Failed to update custom section:', error);
@@ -615,7 +639,8 @@ function createWindow() {
 
   registerHandler('delete-custom-section', async (event, sectionId) => {
     try {
-      await db.deleteCustomSection(sectionId);
+      const normalizedSectionId = normalizeRecordId(sectionId, 'Custom section id');
+      await db.deleteCustomSection(normalizedSectionId);
       return { success: true };
     } catch (error) {
       console.error('Failed to delete custom section:', error);
@@ -625,7 +650,9 @@ function createWindow() {
 
   registerHandler('add-item-to-custom-section', async (event, sectionId, item) => {
     try {
-      const items = await db.addItemToCustomSection(sectionId, item);
+      const normalizedSectionId = normalizeRecordId(sectionId, 'Custom section id');
+      const normalizedItem = normalizeCustomSectionItem(item);
+      const items = await db.addItemToCustomSection(normalizedSectionId, normalizedItem);
       return { success: true, items };
     } catch (error) {
       console.error('Failed to add item to custom section:', error);
@@ -635,7 +662,9 @@ function createWindow() {
 
   registerHandler('remove-item-from-custom-section', async (event, sectionId, itemId) => {
     try {
-      const items = await db.removeItemFromCustomSection(sectionId, itemId);
+      const normalizedSectionId = normalizeRecordId(sectionId, 'Custom section id');
+      const normalizedItemId = normalizeRecordId(itemId, 'Custom section item id');
+      const items = await db.removeItemFromCustomSection(normalizedSectionId, normalizedItemId);
       return { success: true, items };
     } catch (error) {
       console.error('Failed to remove item from custom section:', error);
