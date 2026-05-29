@@ -9,6 +9,31 @@ const debugLog = (...args) => {
   }
 };
 
+function parseJsonValue(value, fallback = value) {
+  if (typeof value !== 'string') {
+    return value;
+  }
+
+  try {
+    return JSON.parse(value);
+  } catch {
+    return fallback;
+  }
+}
+
+function parseSettingsRows(rows = []) {
+  const settings = {};
+  rows.forEach((row) => {
+    settings[row.key] = parseJsonValue(row.value);
+  });
+  return settings;
+}
+
+function parseJsonArrayValue(value) {
+  const parsed = parseJsonValue(value, []);
+  return Array.isArray(parsed) ? parsed : [];
+}
+
 class Database {
   constructor() {
     // Create db in user's app data directory
@@ -329,7 +354,10 @@ class Database {
         'SELECT * FROM files_cache WHERE file_path = ? AND file_hash = ?',
         [normalizedPath, fileHash],
         (err, row) => {
-          if (err) reject(err);
+          if (err) {
+            reject(err);
+            return;
+          }
           resolve(!!row);
         }
       );
@@ -346,7 +374,10 @@ class Database {
         'SELECT content FROM files_cache WHERE file_path = ?',
         [normalizedPath],
         (err, row) => {
-          if (err) reject(err);
+          if (err) {
+            reject(err);
+            return;
+          }
           resolve(row ? row.content : null);
         }
       );
@@ -368,7 +399,10 @@ class Database {
            updated_at = CURRENT_TIMESTAMP`,
         [normalizedPath, fileHash, content],
         (err) => {
-          if (err) reject(err);
+          if (err) {
+            reject(err);
+            return;
+          }
           resolve();
         }
       );
@@ -414,7 +448,10 @@ class Database {
            MAX(updated_at) as newest_entry
          FROM files_cache`,
         (err, row) => {
-          if (err) reject(err);
+          if (err) {
+            reject(err);
+            return;
+          }
           resolve({
             totalEntries: row.total_entries || 0,
             totalSizeBytes: row.total_size_bytes || 0,
@@ -466,7 +503,10 @@ class Database {
            freelist_count
          FROM pragma_page_count(), pragma_page_size(), pragma_freelist_count()`,
         (err, row) => {
-          if (err) reject(err);
+          if (err) {
+            reject(err);
+            return;
+          }
           resolve({
             sizeBytes: row.size_bytes || 0,
             sizeMB: Math.round((row.size_bytes || 0) / 1024 / 1024 * 100) / 100,
@@ -489,7 +529,10 @@ class Database {
         'SELECT * FROM processed_renames WHERE file_path = ?',
         [normalizedPath],
         (err, row) => {
-          if (err) reject(err);
+          if (err) {
+            reject(err);
+            return;
+          }
           resolve(!!row);
         }
       );
@@ -506,7 +549,10 @@ class Database {
         'SELECT * FROM processed_sorts WHERE file_path = ?',
         [normalizedPath],
         (err, row) => {
-          if (err) reject(err);
+          if (err) {
+            reject(err);
+            return;
+          }
           resolve(!!row);
         }
       );
@@ -523,7 +569,10 @@ class Database {
         'SELECT * FROM processed_renames WHERE file_path = ?',
         [normalizedPath],
         (err, row) => {
-          if (err) reject(err);
+          if (err) {
+            reject(err);
+            return;
+          }
           resolve(row);
         }
       );
@@ -540,7 +589,10 @@ class Database {
         'SELECT * FROM processed_sorts WHERE file_path = ?',
         [normalizedPath],
         (err, row) => {
-          if (err) reject(err);
+          if (err) {
+            reject(err);
+            return;
+          }
           resolve(row);
         }
       );
@@ -900,7 +952,10 @@ class Database {
         'SELECT value FROM settings WHERE key = ?',
         [key],
         (err, row) => {
-          if (err) reject(err);
+          if (err) {
+            reject(err);
+            return;
+          }
           resolve(row ? row.value : null);
         }
       );
@@ -913,16 +968,11 @@ class Database {
   async getAllSettings() {
     return new Promise((resolve, reject) => {
       this.db.all('SELECT key, value FROM settings', (err, rows) => {
-        if (err) reject(err);
-        const settings = {};
-        rows.forEach(row => {
-          try {
-            settings[row.key] = JSON.parse(row.value);
-          } catch (e) {
-            settings[row.key] = row.value;
-          }
-        });
-        resolve(settings);
+        if (err) {
+          reject(err);
+          return;
+        }
+        resolve(parseSettingsRows(rows));
       });
     });
   }
@@ -941,7 +991,10 @@ class Database {
            updated_at = CURRENT_TIMESTAMP`,
         [key, serializedValue],
         (err) => {
-          if (err) reject(err);
+          if (err) {
+            reject(err);
+            return;
+          }
           resolve();
         }
       );
@@ -984,12 +1037,11 @@ class Database {
         'SELECT value FROM workspace_settings WHERE workspace_id = ? AND key = ?',
         [workspaceId, key],
         (err, row) => {
-          if (err) reject(err);
-          try {
-            resolve(row ? JSON.parse(row.value) : null);
-          } catch (e) {
-            resolve(row ? row.value : null);
+          if (err) {
+            reject(err);
+            return;
           }
+          resolve(row ? parseJsonValue(row.value) : null);
         }
       );
     });
@@ -1004,16 +1056,11 @@ class Database {
         'SELECT key, value FROM workspace_settings WHERE workspace_id = ?',
         [workspaceId],
         (err, rows) => {
-          if (err) reject(err);
-          const settings = {};
-          rows.forEach(row => {
-            try {
-              settings[row.key] = JSON.parse(row.value);
-            } catch (e) {
-              settings[row.key] = row.value;
-            }
-          });
-          resolve(settings);
+          if (err) {
+            reject(err);
+            return;
+          }
+          resolve(parseSettingsRows(rows));
         }
       );
     });
@@ -1033,7 +1080,10 @@ class Database {
            updated_at = CURRENT_TIMESTAMP`,
         [workspaceId, key, serializedValue],
         (err) => {
-          if (err) reject(err);
+          if (err) {
+            reject(err);
+            return;
+          }
           resolve();
         }
       );
@@ -1046,7 +1096,10 @@ class Database {
   async getWorkspaces() {
     return new Promise((resolve, reject) => {
       this.db.all('SELECT * FROM workspaces ORDER BY created_at ASC', (err, rows) => {
-        if (err) reject(err);
+        if (err) {
+          reject(err);
+          return;
+        }
         resolve(rows || []);
       });
     });
@@ -1066,7 +1119,10 @@ class Database {
            updated_at = CURRENT_TIMESTAMP`,
         [workspace.id, workspace.name, workspace.emoji],
         (err) => {
-          if (err) reject(err);
+          if (err) {
+            reject(err);
+            return;
+          }
           resolve();
         }
       );
@@ -1079,7 +1135,10 @@ class Database {
   async deleteWorkspace(id) {
     return new Promise((resolve, reject) => {
       this.db.run('DELETE FROM workspaces WHERE id = ?', [id], (err) => {
-        if (err) reject(err);
+        if (err) {
+          reject(err);
+          return;
+        }
         resolve();
       });
     });
@@ -1108,14 +1167,7 @@ class Database {
             return;
           }
 
-          const settingsObj = {};
-          settings.forEach(row => {
-            try {
-              settingsObj[row.key] = JSON.parse(row.value);
-            } catch (e) {
-              settingsObj[row.key] = row.value;
-            }
-          });
+          const settingsObj = parseSettingsRows(settings);
 
           resolve({
             workspace: {
@@ -1225,11 +1277,7 @@ class Database {
             if (!settingsByWorkspace[setting.workspace_id]) {
               settingsByWorkspace[setting.workspace_id] = {};
             }
-            try {
-              settingsByWorkspace[setting.workspace_id][setting.key] = JSON.parse(setting.value);
-            } catch (e) {
-              settingsByWorkspace[setting.workspace_id][setting.key] = setting.value;
-            }
+            settingsByWorkspace[setting.workspace_id][setting.key] = parseJsonValue(setting.value);
           });
 
           // Combine workspaces with their settings
@@ -1245,13 +1293,7 @@ class Database {
               return;
             }
 
-            settings.forEach(row => {
-              try {
-                exportData.settings[row.key] = JSON.parse(row.value);
-              } catch (e) {
-                exportData.settings[row.key] = row.value;
-              }
-            });
+            exportData.settings = parseSettingsRows(settings);
 
             resolve(exportData);
           });
@@ -1353,7 +1395,7 @@ class Database {
 
           const sections = rows.map(row => ({
             ...row,
-            items: JSON.parse(row.items || '[]')
+            items: parseJsonArrayValue(row.items || '[]')
           }));
           resolve(sections);
         }
@@ -1479,7 +1521,7 @@ class Database {
             return;
           }
 
-          const currentItems = JSON.parse(row.items || '[]');
+          const currentItems = parseJsonArrayValue(row.items || '[]');
           const newItems = [...currentItems, { ...item, id: Date.now().toString() }];
 
           this.db.run(
@@ -1518,7 +1560,7 @@ class Database {
             return;
           }
 
-          const currentItems = JSON.parse(row.items || '[]');
+          const currentItems = parseJsonArrayValue(row.items || '[]');
           const newItems = currentItems.filter(item => item.id !== itemId);
 
           this.db.run(
@@ -1550,3 +1592,6 @@ class Database {
 }
 
 module.exports = Database;
+module.exports.parseJsonArrayValue = parseJsonArrayValue;
+module.exports.parseJsonValue = parseJsonValue;
+module.exports.parseSettingsRows = parseSettingsRows;
