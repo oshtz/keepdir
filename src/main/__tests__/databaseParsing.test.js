@@ -1,4 +1,5 @@
 const {
+  isSafeSettingKey,
   parseCustomSectionsRows,
   parseJsonArrayValue,
   parseJsonValue,
@@ -21,6 +22,19 @@ describe('database JSON parsing helpers', () => {
       apiKeys: { openai: 'sk-test' },
       legacyValue: 'not-json'
     });
+  });
+
+  it('skips unsafe setting keys from legacy rows', () => {
+    const settings = parseSettingsRows([
+      { key: 'selectedProvider', value: '"openai"' },
+      { key: '__proto__', value: '{"polluted":true}' },
+      { key: 'bad.key', value: '"bad"' }
+    ]);
+
+    expect(isSafeSettingKey('selectedProvider')).toBe(true);
+    expect(isSafeSettingKey('__proto__')).toBe(false);
+    expect(settings).toEqual({ selectedProvider: 'openai' });
+    expect(settings.polluted).toBeUndefined();
   });
 
   it('uses empty arrays for malformed custom-section item payloads', () => {

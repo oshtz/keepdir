@@ -21,10 +21,22 @@ function parseJsonValue(value, fallback = value) {
   }
 }
 
+function isSafeSettingKey(key) {
+  return typeof key === 'string' && /^[A-Za-z][A-Za-z0-9_-]{0,127}$/.test(key);
+}
+
 function parseSettingsRows(rows = []) {
   const settings = {};
   rows.forEach((row) => {
-    settings[row.key] = parseJsonValue(row.value);
+    if (!isSafeSettingKey(row.key)) {
+      return;
+    }
+    Object.defineProperty(settings, row.key, {
+      value: parseJsonValue(row.value),
+      enumerable: true,
+      configurable: true,
+      writable: true
+    });
   });
   return settings;
 }
@@ -1675,6 +1687,7 @@ class Database {
 }
 
 module.exports = Database;
+module.exports.isSafeSettingKey = isSafeSettingKey;
 module.exports.parseCustomSectionsRows = parseCustomSectionsRows;
 module.exports.parseJsonArrayValue = parseJsonArrayValue;
 module.exports.parseJsonValue = parseJsonValue;
