@@ -210,6 +210,26 @@ describe('updater trust boundary', () => {
     expect(result).toEqual({ error: 'Update file does not match the trusted download.' });
   });
 
+  it('re-verifies the downloaded update before installing', async () => {
+    mockReleaseAndChecksum();
+    const checkResult = await updater.checkForUpdate();
+    axios.mockResolvedValue({
+      headers: {
+        'content-length': '5'
+      },
+      data: Readable.from([Buffer.from('hello')])
+    });
+    const downloadResult = await updater.downloadUpdate(checkResult.updateInfo);
+
+    fs.writeFileSync(downloadResult.updatePath, 'HELLO');
+
+    const result = await updater.installUpdate(downloadResult.updatePath);
+    expect(result).toEqual({
+      error: 'Update file checksum no longer matches the trusted download.'
+    });
+    expect(mockApp.exit).not.toHaveBeenCalled();
+  });
+
   it('parses both raw and sha256sum-style checksum files', () => {
     expect(updater.parseChecksumText(ZIP_SHA256, 'keepdir-portable-windows.zip')).toBe(ZIP_SHA256);
     expect(updater.parseChecksumText(

@@ -10,6 +10,7 @@ const GITHUB_REPO = 'oshtz/keepdir';
 const UPDATE_DIR_NAME = 'updates';
 let lastUpdateInfo = null;
 let downloadedUpdatePath = null;
+let downloadedUpdateSha256 = null;
 
 // Platform-specific asset patterns
 // Windows: exact match for portable zip
@@ -101,6 +102,21 @@ function parseChecksumText(text, assetName) {
   throw new Error(`Checksum file does not contain a SHA-256 digest for ${assetName}.`);
 }
 
+function computeFileSha256(filePath) {
+  return new Promise((resolve, reject) => {
+    const hash = crypto.createHash('sha256');
+    const stream = fs.createReadStream(filePath);
+
+    stream.on('data', (chunk) => {
+      hash.update(chunk);
+    });
+    stream.on('error', reject);
+    stream.on('end', () => {
+      resolve(hash.digest('hex'));
+    });
+  });
+}
+
 async function fetchExpectedSha256(updateInfo) {
   if (updateInfo.sha256) {
     return updateInfo.sha256;
@@ -179,6 +195,7 @@ async function checkForUpdate(mainWindow) {
   try {
     lastUpdateInfo = null;
     downloadedUpdatePath = null;
+    downloadedUpdateSha256 = null;
     const currentVersion = app.getVersion();
     const apiUrl = `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`;
 
@@ -298,6 +315,7 @@ async function downloadUpdate(updateInfo, mainWindow) {
     // Determine filename
     const updatePath = getSafeUpdatePath(trustedUpdateInfo.assetName, trustedUpdateInfo.version);
     downloadedUpdatePath = null;
+    downloadedUpdateSha256 = null;
     const expectedSha256 = await fetchExpectedSha256(trustedUpdateInfo);
 
     // Download with progress reporting
@@ -363,6 +381,7 @@ async function downloadUpdate(updateInfo, mainWindow) {
     });
 
     downloadedUpdatePath = updatePath;
+    downloadedUpdateSha256 = expectedSha256;
     return { updatePath };
   } catch (error) {
     console.error('Download failed:', error.message);
@@ -384,6 +403,9 @@ async function installUpdate(updatePath) {
     if (!downloadedUpdatePath) {
       return { error: 'Download the trusted update before installing.' };
     }
+    if (!downloadedUpdateSha256) {
+      return { error: 'Trusted update checksum is missing. Download the update again.' };
+    }
 
     const updateDir = path.resolve(getUpdateDir());
     const resolvedUpdatePath = path.resolve(updatePath || '');
@@ -395,6 +417,16 @@ async function installUpdate(updatePath) {
 
     if (!fs.existsSync(resolvedUpdatePath)) {
       return { error: 'Update file not found.' };
+    }
+
+    const updateStats = fs.lstatSync(resolvedUpdatePath);
+    if (updateStats.isSymbolicLink() || !updateStats.isFile()) {
+      return { error: 'Update file must be a regular file.' };
+    }
+
+    const currentSha256 = await computeFileSha256(resolvedUpdatePath);
+    if (currentSha256 !== downloadedUpdateSha256) {
+      return { error: 'Update file checksum no longer matches the trusted download.' };
     }
 
     const currentExe = process.execPath;
