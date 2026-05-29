@@ -1629,50 +1629,6 @@ describe('Settings', () => {
     });
   });
 
-  describe('Dialog State Management', () => {
-    it('should handle share dialog open/close', async () => {
-      await act(async () => {
-        render(<Settings {...defaultProps} />);
-      });
-
-      // Click on Workspace tab
-      const workspaceTab = screen.getByText('Workspace');
-      await act(async () => {
-        fireEvent.click(workspaceTab);
-      });
-
-      // Find and click share button
-      const shareButton = screen.getByText('Share Workspace');
-      await act(async () => {
-        fireEvent.click(shareButton);
-      });
-
-      // Share dialog should be rendered (mocked component)
-      expect(screen.getAllByText('Settings')).toHaveLength(1);
-    });
-
-    it('should handle share button when no current workspace', async () => {
-      (useWorkspace as jest.Mock).mockReturnValue({
-        ...mockWorkspaceContext,
-        currentWorkspace: null,
-      });
-
-      await act(async () => {
-        render(<Settings {...defaultProps} />);
-      });
-
-      // Click on Workspace tab
-      const workspaceTab = screen.getByText('Workspace');
-      await act(async () => {
-        fireEvent.click(workspaceTab);
-      });
-
-      // Find share button (should be disabled)
-      const shareButton = screen.getByText('Share Workspace');
-      expect(shareButton).toBeDisabled();
-    });
-  });
-
   describe('Settings Loading Edge Cases', () => {
     it('should handle settings loading with partial data', async () => {
       mockElectronAPI.loadSettings.mockResolvedValue({

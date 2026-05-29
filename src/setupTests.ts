@@ -75,10 +75,6 @@ const mockElectronAPI = {
   onOllamaModelPullProgress: jest.fn(() => jest.fn()),
   onUpdateDownloadProgress: jest.fn(() => jest.fn()),
   
-  // Workspace sharing
-  generateWorkspaceShareCode: jest.fn(),
-  importWorkspaceFromShareCode: jest.fn(),
-  cleanupExpiredShares: jest.fn(),
 };
 
 // Mock window.electronAPI

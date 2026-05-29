@@ -25,7 +25,6 @@ import AddIcon from "@mui/icons-material/Add";
 import SmartToyIcon from "@mui/icons-material/SmartToy";
 import { useWorkspace } from "../contexts/WorkspaceContext";
 import SettingsSidepanel from "./SettingsSidepanel";
-import WorkspaceShareDialog from "./WorkspaceShareDialog";
 import KeyboardIcon from "@mui/icons-material/Keyboard";
 import {
   useGlobalKeyboardShortcuts,
@@ -105,7 +104,6 @@ const Settings: React.FC<SettingsProps> = ({
   const [isDeletingOllamaModel, setIsDeletingOllamaModel] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [modelPendingDelete, setModelPendingDelete] = useState<string | null>(null);
-  const [shareDialogOpen, setShareDialogOpen] = useState(false);
   const [newSectionName, setNewSectionName] = useState("");
   const [isCreatingSection, setIsCreatingSection] = useState(false);
   const { shortcuts } = useGlobalKeyboardShortcuts();
@@ -870,8 +868,8 @@ const Settings: React.FC<SettingsProps> = ({
                   color="text.secondary"
                   sx={{ mb: 2, fontFamily: "var(--font-body)" }}
                 >
-                  Export your current workspace settings or import a workspace
-                  from a file
+                  Export your current workspace as a JSON file, or import a
+                  workspace JSON file from another device.
                 </Typography>
                 <Box sx={{ display: "flex", gap: 1.5, flexWrap: "wrap" }}>
                   <Button
@@ -921,15 +919,6 @@ const Settings: React.FC<SettingsProps> = ({
                     sx={{ fontFamily: "var(--font-header)" }}
                   >
                     Import Workspace
-                  </Button>
-                  <Button
-                    variant="contained"
-                    color="secondary"
-                    onClick={() => setShareDialogOpen(true)}
-                    disabled={!currentWorkspace}
-                    sx={{ fontFamily: "var(--font-header)" }}
-                  >
-                    Share Workspace
                   </Button>
                 </Box>
               </Box>
@@ -2169,11 +2158,6 @@ const Settings: React.FC<SettingsProps> = ({
           Save Changes
         </Button>
       </DialogActions>
-
-      <WorkspaceShareDialog
-        open={shareDialogOpen}
-        onClose={() => setShareDialogOpen(false)}
-      />
 
       <Dialog
         open={deleteDialogOpen}

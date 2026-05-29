@@ -17,7 +17,7 @@ A GenAI-powered desktop application for intelligent file organization, built to 
 ### Workspace Management
 - **Multiple Workspaces**: Create, rename, and delete workspaces with per-workspace settings
 - **Export/Import**: Save and load workspace configurations as JSON
-- **Workspace Sharing**: Generate 7-day expiring share codes
+- **Workspace Transfer**: Move workspace configurations between devices using exported JSON files
 - **Full Backup/Restore**: Complete workspace data backup functionality
 - **Settings Export/Import**: Backup and restore all settings including templates, AI rules, and preferences
 

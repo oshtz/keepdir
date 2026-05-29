@@ -171,9 +171,6 @@ const mockWorkspaceContextValue = {
   importWorkspace: jest.fn(),
   exportAllData: jest.fn(),
   importAllData: jest.fn(),
-  generateWorkspaceShareCode: jest.fn(),
-  importWorkspaceFromShareCode: jest.fn(),
-  cleanupExpiredShares: jest.fn(),
   getCustomSections: jest.fn(),
 };
 
