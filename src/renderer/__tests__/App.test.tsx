@@ -818,6 +818,7 @@ describe('App Advanced Functionality', () => {
     });
 
     it('should handle model change with settings load error', async () => {
+      const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
       // First call succeeds for initial load, second fails for model change
       mockElectronAPI.loadSettings
         .mockResolvedValueOnce({
@@ -834,6 +835,8 @@ describe('App Advanced Functionality', () => {
       });
       
       expect(screen.getByTestId('workspace-provider')).toBeInTheDocument();
+      expect(consoleSpy).toHaveBeenCalledWith('Failed to load operation history:', expect.any(Error));
+      consoleSpy.mockRestore();
     });
   });
 

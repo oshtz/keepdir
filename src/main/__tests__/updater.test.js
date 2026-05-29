@@ -91,6 +91,7 @@ describe('updater trust boundary', () => {
   });
 
   it('does not trust release assets outside the configured GitHub repository', async () => {
+    const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
     mockReleaseAndChecksum(createRelease(
       {
         name: 'keepdir-portable-windows.zip',
@@ -105,6 +106,11 @@ describe('updater trust boundary', () => {
     const downloadResult = await updater.downloadUpdate();
     expect(downloadResult.error).toContain('Check for updates before downloading');
     expect(axios).not.toHaveBeenCalled();
+    expect(consoleSpy).toHaveBeenCalledWith(
+      'Download failed:',
+      'Check for updates before downloading.'
+    );
+    consoleSpy.mockRestore();
   });
 
   it('requires a checksum asset for compatible releases', async () => {
@@ -126,6 +132,7 @@ describe('updater trust boundary', () => {
   });
 
   it('downloads only the update returned by the trusted update check', async () => {
+    const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
     mockReleaseAndChecksum();
     const checkResult = await updater.checkForUpdate();
 
@@ -144,6 +151,10 @@ describe('updater trust boundary', () => {
 
     expect(mismatchResult.error).toContain('do not match');
     expect(axios).not.toHaveBeenCalled();
+    expect(consoleSpy).toHaveBeenCalledWith(
+      'Download failed:',
+      'Update details do not match the latest trusted update check.'
+    );
 
     axios.mockResolvedValue({
       headers: {
@@ -155,9 +166,11 @@ describe('updater trust boundary', () => {
     const downloadResult = await updater.downloadUpdate(checkResult.updateInfo);
     expect(downloadResult.updatePath).toBe(path.join(baseDir, 'updates', 'keepdir-portable-windows.zip'));
     expect(await fsp.readFile(downloadResult.updatePath, 'utf8')).toBe('hello');
+    consoleSpy.mockRestore();
   });
 
   it('rejects downloaded updates when the checksum does not match', async () => {
+    const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
     mockReleaseAndChecksum(createRelease(), `${'0'.repeat(64)}  keepdir-portable-windows.zip`);
     const checkResult = await updater.checkForUpdate();
     axios.mockResolvedValue({
@@ -172,6 +185,11 @@ describe('updater trust boundary', () => {
 
     expect(result.error).toContain('checksum did not match');
     expect(fs.existsSync(updatePath)).toBe(false);
+    expect(consoleSpy).toHaveBeenCalledWith(
+      'Download failed:',
+      'Downloaded update checksum did not match the release checksum.'
+    );
+    consoleSpy.mockRestore();
   });
 
   it('rejects install paths that do not match the downloaded trusted update', async () => {

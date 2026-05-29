@@ -290,6 +290,7 @@ describe('ModelManagement', () => {
     });
 
     it('should handle Ollama connection error', async () => {
+      const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
       mockedAxios.get.mockRejectedValue(new Error('Connection failed'));
 
       await act(async () => {
@@ -304,6 +305,9 @@ describe('ModelManagement', () => {
       await waitFor(() => {
         expect(screen.getByText('Failed to fetch models. Is the provider service running?')).toBeInTheDocument();
       });
+
+      expect(consoleSpy).toHaveBeenCalledWith('Failed to fetch models:', expect.any(Error));
+      consoleSpy.mockRestore();
     });
 
     it('should pull Ollama model successfully', async () => {
@@ -336,6 +340,7 @@ describe('ModelManagement', () => {
     });
 
     it('should handle Ollama model pull failure', async () => {
+      const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
       const mockModels = { models: [] };
       mockedAxios.get.mockResolvedValue({ data: mockModels });
       mockedAxios.post.mockRejectedValue(new Error('Pull failed'));
@@ -360,6 +365,9 @@ describe('ModelManagement', () => {
       await waitFor(() => {
         expect(screen.getByText('Failed to pull model. Check the model name and try again.')).toBeInTheDocument();
       });
+
+      expect(consoleSpy).toHaveBeenCalledWith('Failed to pull model:', expect.any(Error));
+      consoleSpy.mockRestore();
     });
 
     it('should disable pull button when model name is empty', async () => {

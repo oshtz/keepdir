@@ -702,6 +702,7 @@ describe('Settings', () => {
     });
 
     it('should handle load settings error', async () => {
+      const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
       mockElectronAPI.loadSettings.mockRejectedValue(new Error('Load failed'));
       
       await act(async () => {
@@ -711,6 +712,9 @@ describe('Settings', () => {
       await waitFor(() => {
         expect(screen.getByText('Failed to load settings')).toBeInTheDocument();
       });
+
+      expect(consoleSpy).toHaveBeenCalledWith('Failed to load settings:', expect.any(Error));
+      consoleSpy.mockRestore();
     });
   });
 
@@ -1579,6 +1583,7 @@ describe('Settings', () => {
 
   describe('Settings Save Edge Cases', () => {
     it('should handle save settings exception', async () => {
+      const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
       mockElectronAPI.saveSettings.mockRejectedValue(new Error('Network error'));
 
       await act(async () => {
@@ -1594,6 +1599,9 @@ describe('Settings', () => {
       await waitFor(() => {
         expect(screen.getByText('Failed to save settings')).toBeInTheDocument();
       });
+
+      expect(consoleSpy).toHaveBeenCalledWith('Failed to save settings:', expect.any(Error));
+      consoleSpy.mockRestore();
     });
 
     it('should handle successful save with auto-close', async () => {

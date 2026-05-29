@@ -34,7 +34,14 @@ jest.mock('react-transition-group', () => {
 const originalConsoleError = console.error.bind(console);
 console.error = (...args: unknown[]) => {
   const message = String(args[0] ?? '');
-  if (message.includes('MUI: The modal content node does not accept focus.')) {
+  if (
+    message.includes('MUI: The modal content node does not accept focus.') ||
+    message.includes('The current testing environment is not configured to support act(...)') ||
+    (
+      message.includes('Warning: An update to %s inside a test was not wrapped in act') &&
+      args[1] === 'ModelManagement'
+    )
+  ) {
     return;
   }
   originalConsoleError(...args);
