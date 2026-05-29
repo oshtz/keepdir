@@ -2,6 +2,43 @@ import '@testing-library/jest-dom';
 
 (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
 (global as any).IS_REACT_ACT_ENVIRONMENT = true;
+(window as any).IS_REACT_ACT_ENVIRONMENT = true;
+
+jest.mock('react-transition-group', () => {
+  const React = require('react');
+
+  const renderTransitionChildren = (children: any, inProp: boolean) => {
+    const state = inProp ? 'entered' : 'exited';
+    return typeof children === 'function' ? children(state, {}) : children;
+  };
+
+  const Transition = ({ children, in: inProp = true, unmountOnExit }: any) => {
+    if (!inProp && unmountOnExit) {
+      return null;
+    }
+    return renderTransitionChildren(children, inProp);
+  };
+
+  const TransitionGroup = ({ children }: any) => React.createElement(React.Fragment, null, children);
+
+  return {
+    __esModule: true,
+    Transition,
+    CSSTransition: Transition,
+    SwitchTransition: TransitionGroup,
+    TransitionGroup,
+    config: { disabled: true },
+  };
+});
+
+const originalConsoleError = console.error.bind(console);
+console.error = (...args: unknown[]) => {
+  const message = String(args[0] ?? '');
+  if (message.includes('MUI: The modal content node does not accept focus.')) {
+    return;
+  }
+  originalConsoleError(...args);
+};
 
 // Mock electron API
 const mockElectronAPI = {

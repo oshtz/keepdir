@@ -143,6 +143,7 @@ const ErrorRecoveryDialog: React.FC<ErrorRecoveryDialogProps> = ({
       maxWidth="md"
       fullWidth
       PaperProps={{
+        tabIndex: -1,
         sx: {
           borderRadius: 1.5,
           overflow: 'hidden'

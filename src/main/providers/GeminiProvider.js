@@ -164,9 +164,6 @@ class GeminiProvider extends Provider {
       }
 
       let text = candidate.content.parts[0].text;
-      
-      // Debug log the raw response
-      console.log('Raw Gemini response:', text);
 
       // Helper function to validate and parse JSON
       const tryParseJSON = (str) => {
@@ -183,17 +180,12 @@ class GeminiProvider extends Provider {
             .replace(/\s+/g, ' ')
             .trim();
 
-          console.log('Attempting to parse:', cleaned);
-          
           const parsed = JSON.parse(cleaned);
           // Verify it has the expected structure (renames or categories)
           if (parsed.renames || parsed.categories) {
-            console.log('Found valid JSON structure');
             return { valid: true, json: cleaned };
           }
-          console.log('Invalid structure, missing renames/categories');
-        } catch (e) {
-          console.log('Parse failed:', e.message);
+        } catch {
         }
         return { valid: false };
       };
@@ -205,46 +197,36 @@ class GeminiProvider extends Provider {
         .replace(/\r?\n/g, ' ')
         .replace(/\s+/g, ' ')
         .trim();
-      
-      console.log('Cleaned full response:', text);
 
       // First try: direct parse of full response
       let result = tryParseJSON(text);
       if (result.valid) {
-        console.log('Successfully parsed full response');
         return result.json;
       }
       
       // Second try: find all potential JSON objects
-      console.log('Attempting to find JSON objects in response');
       const jsonObjects = text.match(/{[\s\S]*?}/g) || [];
-      console.log(`Found ${jsonObjects.length} potential JSON objects`);
       
       for (const obj of jsonObjects) {
-        console.log('Trying potential JSON object:', obj);
         result = tryParseJSON(obj);
         if (result.valid) {
-          console.log('Successfully parsed JSON object');
           return result.json;
         }
       }
       
       // Third try: find the largest JSON-like structure
-      console.log('Attempting to find largest JSON structure');
       const start = text.indexOf('{');
       const end = text.lastIndexOf('}') + 1;
       if (start !== -1 && end > start) {
         const jsonCandidate = text.slice(start, end);
-        console.log('Found potential JSON structure:', jsonCandidate);
         result = tryParseJSON(jsonCandidate);
         if (result.valid) {
-          console.log('Successfully parsed JSON structure');
           return result.json;
         }
       }
       
       // If all attempts fail, throw an error with details
-      console.error('Failed to extract valid JSON from response:', text);
+      console.error('Failed to extract valid JSON from Gemini response.');
       throw new Error('Could not extract valid JSON from model response');
     } catch (error) {
       console.error('Gemini API error:', error);

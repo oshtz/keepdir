@@ -92,7 +92,7 @@ const Settings: React.FC<SettingsProps> = ({
     deleteCustomSection,
   } = useWorkspace();
   const [settings, setSettings] = useState<Settings>(defaultSettings);
-  const [saved, setSaved] = useState(false);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [modelName, setModelName] = useState("");
@@ -299,7 +299,7 @@ const Settings: React.FC<SettingsProps> = ({
 
   useEffect(() => {
     if (open) {
-      setSaved(false);
+      setSuccessMessage(null);
       setError(null);
       setActiveTab(initialTab);
       loadSettings();
@@ -343,7 +343,7 @@ const Settings: React.FC<SettingsProps> = ({
     try {
       const saveResult = await window.electronAPI.saveSettings(settings);
       if (saveResult.success) {
-        setSaved(true);
+        setSuccessMessage("Settings saved successfully");
         setTimeout(() => {
           onClose();
         }, 1500);
@@ -370,8 +370,8 @@ const Settings: React.FC<SettingsProps> = ({
 
       if (result.success) {
         setNewSectionName("");
-        // Show success message
-        console.log("Custom section created successfully");
+        setError(null);
+        setSuccessMessage("Custom section created successfully");
       } else if (result.error) {
         setError(`Failed to create section: ${result.error}`);
       }
@@ -388,7 +388,8 @@ const Settings: React.FC<SettingsProps> = ({
     try {
       const result = await deleteCustomSection(sectionId);
       if (result.success) {
-        console.log("Custom section deleted successfully");
+        setError(null);
+        setSuccessMessage("Custom section deleted successfully");
       } else if (result.error) {
         setError(`Failed to delete section: ${result.error}`);
       }
@@ -810,8 +811,8 @@ const Settings: React.FC<SettingsProps> = ({
                       className="enhanced-button"
                       variant="contained"
                       onClick={() => {
-                        // Theme is automatically saved via setWorkspaceTheme
-                        console.log("Workspace theme saved");
+                        setError(null);
+                        setSuccessMessage("Workspace theme saved");
                       }}
                       sx={{
                         fontFamily: "var(--font-header)",
@@ -881,8 +882,8 @@ const Settings: React.FC<SettingsProps> = ({
                           currentWorkspace.id,
                         );
                         if (result.success) {
-                          // Show success message
-                          console.log("Workspace exported successfully");
+                          setError(null);
+                          setSuccessMessage("Workspace exported successfully");
                         } else if (result.error) {
                           setError(`Export failed: ${result.error}`);
                         }
@@ -905,8 +906,8 @@ const Settings: React.FC<SettingsProps> = ({
                           { generateNewId: true },
                         );
                         if (result.success) {
-                          // Show success message
-                          console.log("Workspace imported successfully");
+                          setError(null);
+                          setSuccessMessage("Workspace imported successfully");
                         } else if (result.error) {
                           setError(`Import failed: ${result.error}`);
                         }
@@ -949,8 +950,8 @@ const Settings: React.FC<SettingsProps> = ({
                       try {
                         const result = await window.electronAPI.exportAllData();
                         if (result.success) {
-                          // Show success message
-                          console.log("Backup created successfully");
+                          setError(null);
+                          setSuccessMessage("Backup created successfully");
                         } else if (result.error) {
                           setError(`Backup failed: ${result.error}`);
                         }
@@ -973,8 +974,8 @@ const Settings: React.FC<SettingsProps> = ({
                           overwriteExisting: true,
                         });
                         if (result.success) {
-                          // Show success message
-                          console.log("Data restored successfully");
+                          setError(null);
+                          setSuccessMessage("Data restored successfully");
                         } else if (result.error) {
                           setError(`Restore failed: ${result.error}`);
                         }
@@ -1987,6 +1988,7 @@ const Settings: React.FC<SettingsProps> = ({
       maxWidth="lg"
       fullWidth
       PaperProps={{
+        tabIndex: -1,
         sx: {
           borderRadius: 1.5,
           overflow: "hidden",
@@ -2083,7 +2085,7 @@ const Settings: React.FC<SettingsProps> = ({
           {renderTabContent()}
         </Box>
 
-        {saved && (
+        {successMessage && (
           <Alert
             severity="success"
             sx={{
@@ -2098,7 +2100,7 @@ const Settings: React.FC<SettingsProps> = ({
               "& .MuiAlert-message": { fontFamily: "var(--font-body)" },
             }}
           >
-            Settings saved successfully
+            {successMessage}
           </Alert>
         )}
 
@@ -2163,6 +2165,7 @@ const Settings: React.FC<SettingsProps> = ({
         open={deleteDialogOpen}
         onClose={handleCloseDeleteDialog}
         aria-labelledby="delete-ollama-model-title"
+        PaperProps={{ tabIndex: -1 }}
       >
         <DialogTitle id="delete-ollama-model-title" sx={{ fontFamily: "var(--font-header)" }}>
           Delete Model

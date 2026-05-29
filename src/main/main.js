@@ -16,11 +16,17 @@ if (require('electron-squirrel-startup')) {
 }
 
 const isDev = process.env.NODE_ENV === 'development';
+const isVerboseLogging = isDev || process.env.KEEPDIR_DEBUG === '1';
+const debugLog = (...args) => {
+  if (isVerboseLogging) {
+    console.log(...args);
+  }
+};
 
 // Enable debug logging only in development
 if (isDev) {
   process.env.DEBUG = 'electron*';
-  console.log('Development mode:', isDev);
+  debugLog('Development mode:', isDev);
 }
 
 // Initialize database
@@ -114,7 +120,7 @@ registerHandler('get-provider-models', async (_event, providerName) => {
 });
 
 function createWindow() {
-  console.log('Creating window...');
+  debugLog('Creating window...');
 
   // Create the browser window.
   const mainWindow = new BrowserWindow({
@@ -131,19 +137,19 @@ function createWindow() {
     },
   });
 
-  console.log('Window created');
+  debugLog('Window created');
 
   // Load from webpack dev server in development
   if (isDev) {
     const loadUrl = 'http://localhost:8081';
-    console.log('Loading from dev server:', loadUrl);
+    debugLog('Loading from dev server:', loadUrl);
     mainWindow.loadURL(loadUrl).catch(err => {
       console.error('Failed to load URL:', err);
     });
     mainWindow.webContents.openDevTools();
   } else {
     const filePath = path.join(__dirname, '../../dist/index.html');
-    console.log('Loading from file:', filePath);
+    debugLog('Loading from file:', filePath);
     mainWindow.loadFile(filePath).catch(err => {
       console.error('Failed to load file:', err);
     });
@@ -151,7 +157,7 @@ function createWindow() {
 
   // Show window when ready
   mainWindow.once('ready-to-show', () => {
-    console.log('Window ready to show');
+    debugLog('Window ready to show');
     mainWindow.show();
   });
 
@@ -205,7 +211,7 @@ function createWindow() {
   });
 
   registerHandler('load-directory', async (event, directoryPath) => {
-    console.log(`Loading directory: ${directoryPath}`);
+    debugLog(`Loading directory: ${directoryPath}`);
     try {
       const items = await fs.readdir(directoryPath, { withFileTypes: true });
       const files = await Promise.all(items.map(async (item) => {
@@ -319,7 +325,7 @@ function createWindow() {
 
   // Log console messages from renderer
   mainWindow.webContents.on('console-message', (event, level, message) => {
-    console.log('Renderer Console:', message);
+    debugLog('Renderer Console:', message);
   });
 
   // Workspace handlers
@@ -921,7 +927,7 @@ function createWindow() {
                 );
               }
             } catch (error) {
-              console.log(`Could not process image file ${fileName}:`, error);
+              debugLog(`Could not process image file ${fileName}:`, error);
             }
           }
 
@@ -1126,13 +1132,13 @@ function createWindow() {
 
 // This method will be called when Electron has finished initialization
 if (app) {
-  console.log('App exists');
-  app.whenReady().then(() => {
-    console.log('App ready');
+debugLog('App exists');
+app.whenReady().then(() => {
+    debugLog('App ready');
     createWindow();
 
     app.on('activate', () => {
-      console.log('App activated');
+      debugLog('App activated');
       if (BrowserWindow.getAllWindows().length === 0) {
         createWindow();
       }
@@ -1143,7 +1149,7 @@ if (app) {
 
   // Quit when all windows are closed
   app.on('window-all-closed', () => {
-    console.log('All windows closed');
+    debugLog('All windows closed');
     if (process.platform !== 'darwin') {
       app.quit();
     }

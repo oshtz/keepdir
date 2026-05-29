@@ -3,6 +3,12 @@ const path = require('path');
 const crypto = require('crypto');
 const fs = require('fs');
 
+const debugLog = (...args) => {
+  if (process.env.KEEPDIR_DEBUG === '1') {
+    console.debug(...args);
+  }
+};
+
 class Database {
   constructor() {
     // Create db in user's app data directory
@@ -210,7 +216,7 @@ class Database {
     // Run maintenance every 6 hours
     this.maintenanceInterval = setInterval(async () => {
       try {
-        console.log('Running database maintenance...');
+        debugLog('Running database maintenance...');
         await this.cleanupCache(168); // Clean cache older than 7 days
 
         // Run full optimization once per day (check if it's been 24 hours)
@@ -219,12 +225,12 @@ class Database {
         const oneDayMs = 24 * 60 * 60 * 1000;
 
         if (!lastOptimization || (now - parseInt(lastOptimization)) > oneDayMs) {
-          console.log('Running database optimization...');
+          debugLog('Running database optimization...');
           await this.optimizeDatabase();
           await this.saveSetting('lastOptimization', now.toString());
         }
 
-        console.log('Database maintenance completed');
+        debugLog('Database maintenance completed');
       } catch (error) {
         console.error('Database maintenance failed:', error);
       }
@@ -264,7 +270,7 @@ class Database {
         .toString()
         .normalize('NFC');
 
-      console.log('Normalized path:', {
+      debugLog('Normalized path:', {
         original: filePath,
         normalized: normalized,
         hex: Buffer.from(normalized).toString('hex')
@@ -289,7 +295,7 @@ class Database {
         .toString()
         .normalize('NFC');
 
-      console.log('Normalized filename:', {
+      debugLog('Normalized filename:', {
         original: filename,
         withoutPrefix: withoutPrefix,
         normalized: normalized,
@@ -548,7 +554,7 @@ class Database {
     const normalizedPath = this._normalizePath(filePath);
     const normalizedOriginal = this._normalizeFilename(originalName);
 
-    console.log('Caching rename suggestion:', {
+    debugLog('Caching rename suggestion:', {
       path: normalizedPath,
       original: normalizedOriginal,
       suggested: suggestedName
@@ -584,7 +590,7 @@ class Database {
     const normalizedPath = this._normalizePath(filePath);
     const normalizedOriginal = this._normalizePath(originalPath);
 
-    console.log('Caching sort suggestion:', {
+    debugLog('Caching sort suggestion:', {
       path: normalizedPath,
       original: normalizedOriginal,
       suggested: suggestedPath,
@@ -621,7 +627,7 @@ class Database {
     const normalizedOldPath = this._normalizePath(oldPath);
     const normalizedNewPath = this._normalizePath(newPath);
 
-    console.log('Marking file as renamed:', {
+    debugLog('Marking file as renamed:', {
       from: normalizedOldPath,
       to: normalizedNewPath
     });
@@ -653,7 +659,7 @@ class Database {
     const normalizedOldPath = this._normalizePath(oldPath);
     const normalizedNewPath = this._normalizePath(newPath);
 
-    console.log('Marking file as sorted:', {
+    debugLog('Marking file as sorted:', {
       from: normalizedOldPath,
       to: normalizedNewPath
     });
@@ -685,7 +691,7 @@ class Database {
     const normalizedPath = this._normalizePath(filePath);
     const normalizedName = this._normalizeFilename(path.basename(filePath));
 
-    console.log('Marking file as rename skipped:', normalizedPath);
+    debugLog('Marking file as rename skipped:', normalizedPath);
 
     return new Promise((resolve, reject) => {
       this.db.run(
@@ -714,7 +720,7 @@ class Database {
   async markSortSkipped(filePath) {
     const normalizedPath = this._normalizePath(filePath);
 
-    console.log('Marking file as sort skipped:', normalizedPath);
+    debugLog('Marking file as sort skipped:', normalizedPath);
 
     return new Promise((resolve, reject) => {
       this.db.run(
@@ -741,7 +747,7 @@ class Database {
    * Get all files not processed for renaming with optimized batch processing
    */
   async getUnprocessedRenames(filePaths) {
-    console.log('Getting unprocessed renames from:', filePaths);
+    debugLog('Getting unprocessed renames from:', filePaths);
 
     // Process paths in batches of 500 for better performance
     const BATCH_SIZE = 500;
@@ -779,7 +785,7 @@ class Database {
       });
     }
 
-    console.log('Total unprocessed paths for renaming:', results.length);
+    debugLog('Total unprocessed paths for renaming:', results.length);
     return results;
   }
 
@@ -787,7 +793,7 @@ class Database {
    * Get all files not processed for sorting with optimized batch processing
    */
   async getUnprocessedSorts(filePaths) {
-    console.log('Getting unprocessed sorts from:', filePaths);
+    debugLog('Getting unprocessed sorts from:', filePaths);
 
     // Process paths in batches of 500 for better performance
     const BATCH_SIZE = 500;
@@ -825,7 +831,7 @@ class Database {
       });
     }
 
-    console.log('Total unprocessed paths for sorting:', results.length);
+    debugLog('Total unprocessed paths for sorting:', results.length);
     return results;
   }
 
@@ -1532,12 +1538,12 @@ class Database {
   }
 
   close() {
-    console.log('Closing database connection');
+    debugLog('Closing database connection');
     this.db.close((err) => {
       if (err) {
         console.error('Error closing database:', err);
       } else {
-        console.log('Database connection closed successfully');
+        debugLog('Database connection closed successfully');
       }
     });
   }

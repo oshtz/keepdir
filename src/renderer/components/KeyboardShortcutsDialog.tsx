@@ -42,6 +42,7 @@ const KeyboardShortcutsDialog: React.FC<KeyboardShortcutsDialogProps> = ({
       maxWidth="md"
       fullWidth
       PaperProps={{
+        tabIndex: -1,
         sx: {
           borderRadius: 1.5,
           maxHeight: '90vh',

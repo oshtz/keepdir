@@ -1082,8 +1082,6 @@ describe('Settings', () => {
     });
 
     it('should handle apply theme button click', async () => {
-      const consoleSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
-
       await act(async () => {
         render(<Settings {...defaultProps} />);
       });
@@ -1100,8 +1098,7 @@ describe('Settings', () => {
         fireEvent.click(applyButton);
       });
 
-      expect(consoleSpy).toHaveBeenCalledWith('Workspace theme saved');
-      consoleSpy.mockRestore();
+      expect(screen.getByText('Workspace theme saved')).toBeInTheDocument();
     });
 
     it('should handle reset theme when no current workspace', async () => {

@@ -135,6 +135,7 @@ const OperationSummaryModal: React.FC<OperationSummaryModalProps> = ({
       maxWidth="sm"
       fullWidth
       PaperProps={{
+        tabIndex: -1,
         sx: {
           borderRadius: 1.5,
           overflow: 'hidden'

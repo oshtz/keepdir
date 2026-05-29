@@ -32,13 +32,17 @@ jest.mock('../Settings', () => {
 });
 
 jest.mock('../AnimatedButton', () => {
-  return function MockAnimatedButton({ children, onClick, ...props }: any) {
+  return function MockAnimatedButton({ children, onClick, animationType, ...props }: any) {
+    void animationType;
     return <button onClick={onClick} {...props}>{children}</button>;
   };
 });
 
 jest.mock('../AnimatedCard', () => {
-  return function MockAnimatedCard({ children, onClick, ...props }: any) {
+  return function MockAnimatedCard({ children, onClick, animationType, glowColor, delay, ...props }: any) {
+    void animationType;
+    void glowColor;
+    void delay;
     return <div onClick={onClick} {...props}>{children}</div>;
   };
 });
