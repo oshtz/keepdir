@@ -109,7 +109,7 @@ describe('main file operations', () => {
         categories: [
           {
             name: 'Docs',
-            suggestedPath: 'Docs',
+            suggestedPath: './Docs',
             files: ['safe.txt']
           },
           {

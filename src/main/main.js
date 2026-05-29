@@ -10,6 +10,10 @@ const {
   applySortSuggestions
 } = require('./fileOperations');
 const {
+  normalizeRenameSuggestions,
+  normalizeSortSuggestions
+} = require('./suggestionValidation');
+const {
   assertNotSymbolicLink,
   isAnalyzableDirectoryEntry,
   normalizeCacheAgeHours,
@@ -1078,16 +1082,29 @@ function createWindow() {
         }
 
         // Merge batch results
-        if (renameFiles && batchSuggestions.renames) {
-          allSuggestions.renames.push(...batchSuggestions.renames);
-        } else if (!renameFiles && batchSuggestions.categories) {
+        if (renameFiles) {
+          const batchRenames = Array.isArray(batchSuggestions?.renames) ? batchSuggestions.renames : [];
+          allSuggestions.renames.push(...batchRenames);
+        } else {
           // Merge categories intelligently
-          batchSuggestions.categories.forEach(newCat => {
-            const existingCat = allSuggestions.categories.find(c => c.name === newCat.name);
+          const batchCategories = Array.isArray(batchSuggestions?.categories) ? batchSuggestions.categories : [];
+          batchCategories.forEach(newCat => {
+            if (!newCat || typeof newCat !== 'object') {
+              return;
+            }
+
+            const categoryName = typeof newCat.name === 'string' ? newCat.name : '';
+            const categoryFiles = Array.isArray(newCat.files) ? newCat.files : [];
+            const normalizedCategory = {
+              ...newCat,
+              name: categoryName,
+              files: categoryFiles
+            };
+            const existingCat = allSuggestions.categories.find(c => c.name === categoryName);
             if (existingCat) {
-              existingCat.files.push(...newCat.files);
+              existingCat.files.push(...categoryFiles);
             } else {
-              allSuggestions.categories.push(newCat);
+              allSuggestions.categories.push(normalizedCategory);
             }
           });
         }
@@ -1098,7 +1115,9 @@ function createWindow() {
         }
       }
 
-      const suggestions = allSuggestions;
+      const suggestions = renameFiles
+        ? normalizeRenameSuggestions(allSuggestions, fileNames)
+        : normalizeSortSuggestions(allSuggestions, fileNames, directoryPath);
 
       if (renameFiles) {
         if (!suggestions.renames?.length) {

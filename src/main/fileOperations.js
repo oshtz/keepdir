@@ -107,11 +107,12 @@ function resolveSafeCategoryPath(rootPath, suggestedPath) {
     .split(/[\\/]+/)
     .filter(Boolean);
 
-  if (segments.some(segment => segment === '.' || segment === '..')) {
+  if (segments.some(segment => segment === '..')) {
     throw new Error(`Category path cannot contain traversal segments: ${suggestedPath}`);
   }
 
-  const safePath = path.join(path.resolve(rootPath), ...segments.map(sanitizePathSegment));
+  const safeSegments = segments.filter(segment => segment !== '.');
+  const safePath = path.join(path.resolve(rootPath), ...safeSegments.map(sanitizePathSegment));
   return resolveInsideRoot(rootPath, safePath);
 }
 
