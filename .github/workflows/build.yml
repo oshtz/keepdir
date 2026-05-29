@@ -68,55 +68,6 @@ jobs:
             keepdir-portable-windows.zip
             keepdir-portable-windows.zip.sha256
 
-      - name: Determine release tag
-        id: release_tag
-        if: github.ref == 'refs/heads/main'
-        shell: pwsh
-        run: |
-          $version = (Get-Content package.json | ConvertFrom-Json).version
-          if (-not $version) { throw "package.json version not found" }
-          "version=$version" >> $env:GITHUB_OUTPUT
-          "tag=v$version" >> $env:GITHUB_OUTPUT
-
-      - name: Check for existing release
-        id: release_check
-        if: github.ref == 'refs/heads/main'
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const tag = '${{ steps.release_tag.outputs.tag }}';
-            try {
-              await github.rest.repos.getReleaseByTag({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                tag
-              });
-              core.setOutput('exists', 'true');
-            } catch (error) {
-              core.setOutput('exists', 'false');
-            }
-
-      - name: Create GitHub release
-        if: github.ref == 'refs/heads/main' && steps.release_check.outputs.exists != 'true'
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ steps.release_tag.outputs.tag }}
-          name: Release ${{ steps.release_tag.outputs.tag }}
-          target_commitish: ${{ github.sha }}
-          generate_release_notes: true
-          files: |
-            keepdir-portable-windows.zip
-            keepdir-portable-windows.zip.sha256
-
-      - name: Upload to existing release
-        if: github.ref == 'refs/heads/main' && steps.release_check.outputs.exists == 'true'
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ steps.release_tag.outputs.tag }}
-          files: |
-            keepdir-portable-windows.zip
-            keepdir-portable-windows.zip.sha256
-
   build-macos:
     runs-on: macos-latest
 
@@ -229,9 +180,29 @@ jobs:
             out/make/**/*.dmg
             out/make/**/*.sha256
 
+      - name: Cleanup keychain
+        if: always()
+        run: |
+          if [ -n "$KEYCHAIN_PATH" ] && [ -f "$KEYCHAIN_PATH" ]; then
+            security delete-keychain "$KEYCHAIN_PATH" || true
+          fi
+
+  publish-release:
+    needs: [build-windows, build-macos]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download release artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+
       - name: Determine release tag
         id: release_tag
-        if: github.ref == 'refs/heads/main'
         run: |
           version=$(node -p "require('./package.json').version")
           if [ -z "$version" ]; then
@@ -241,9 +212,31 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "tag=v$version" >> "$GITHUB_OUTPUT"
 
+      - name: Verify release artifacts
+        run: |
+          set -euo pipefail
+          mapfile -t artifacts < <(find release-artifacts -type f \( -name "*.zip" -o -name "*.dmg" \) | sort)
+          if [ "${#artifacts[@]}" -eq 0 ]; then
+            echo "No release archives found"
+            exit 1
+          fi
+
+          for artifact in "${artifacts[@]}"; do
+            checksum_file="$artifact.sha256"
+            if [ ! -f "$checksum_file" ]; then
+              echo "Missing checksum for $artifact"
+              exit 1
+            fi
+            expected=$(awk '{print tolower($1)}' "$checksum_file")
+            actual=$(sha256sum "$artifact" | awk '{print tolower($1)}')
+            if [ "$expected" != "$actual" ]; then
+              echo "Checksum mismatch for $artifact"
+              exit 1
+            fi
+          done
+
       - name: Check for existing release
         id: release_check
-        if: github.ref == 'refs/heads/main'
         uses: actions/github-script@v7
         with:
           script: |
@@ -256,35 +249,26 @@ jobs:
               });
               core.setOutput('exists', 'true');
             } catch (error) {
-              core.setOutput('exists', 'false');
+              if (error.status === 404) {
+                core.setOutput('exists', 'false');
+              } else {
+                throw error;
+              }
             }
 
       - name: Create GitHub release
-        if: github.ref == 'refs/heads/main' && steps.release_check.outputs.exists != 'true'
+        if: steps.release_check.outputs.exists != 'true'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.release_tag.outputs.tag }}
           name: Release ${{ steps.release_tag.outputs.tag }}
           target_commitish: ${{ github.sha }}
           generate_release_notes: true
-          files: |
-            out/make/**/*.zip
-            out/make/**/*.dmg
-            out/make/**/*.sha256
+          files: release-artifacts/**/*
 
       - name: Upload to existing release
-        if: github.ref == 'refs/heads/main' && steps.release_check.outputs.exists == 'true'
+        if: steps.release_check.outputs.exists == 'true'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.release_tag.outputs.tag }}
-          files: |
-            out/make/**/*.zip
-            out/make/**/*.dmg
-            out/make/**/*.sha256
-
-      - name: Cleanup keychain
-        if: always()
-        run: |
-          if [ -n "$KEYCHAIN_PATH" ] && [ -f "$KEYCHAIN_PATH" ]; then
-            security delete-keychain "$KEYCHAIN_PATH" || true
-          fi
+          files: release-artifacts/**/*
