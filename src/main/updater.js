@@ -440,32 +440,41 @@ async function installUpdate(updatePath) {
         $procId = ${pid}
         $zipPath = '${resolvedUpdatePath.replace(/'/g, "''")}'
         $targetDir = '${currentDir.replace(/'/g, "''")}'
+        $tempDir = Join-Path ([System.IO.Path]::GetTempPath()) ("keepdir-update-" + [guid]::NewGuid().ToString("N"))
 
-        # Wait for app to exit
-        while (Get-Process -Id $procId -ErrorAction SilentlyContinue) {
-            Start-Sleep -Milliseconds 200
-        }
+        try {
+            New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
 
-        # Small delay to ensure file handles are released
-        Start-Sleep -Seconds 1
-
-        # Extract zip (overwrite existing files)
-        Expand-Archive -Path $zipPath -DestinationPath $targetDir -Force
-
-        # Find and start the new executable
-        $exePath = Join-Path $targetDir 'keepdir.exe'
-        if (Test-Path $exePath) {
-            Start-Process $exePath
-        } else {
-            # Try to find it in a subdirectory (in case zip has folder structure)
-            $exePath = Get-ChildItem -Path $targetDir -Name 'keepdir.exe' -Recurse | Select-Object -First 1
-            if ($exePath) {
-                Start-Process (Join-Path $targetDir $exePath)
+            # Wait for app to exit
+            while (Get-Process -Id $procId -ErrorAction SilentlyContinue) {
+                Start-Sleep -Milliseconds 200
             }
-        }
 
-        # Cleanup
-        Remove-Item $zipPath -Force -ErrorAction SilentlyContinue
+            # Small delay to ensure file handles are released
+            Start-Sleep -Seconds 1
+
+            # Extract to a temp directory first so both flat and nested archives install cleanly.
+            Expand-Archive -Path $zipPath -DestinationPath $tempDir -Force
+
+            $sourceExe = Get-ChildItem -Path $tempDir -Filter 'keepdir.exe' -File -Recurse | Select-Object -First 1
+            if (-not $sourceExe) {
+                throw 'Updated executable not found in archive.'
+            }
+
+            $sourceDir = Split-Path -Parent $sourceExe.FullName
+            Get-ChildItem -LiteralPath $sourceDir -Force | Copy-Item -Destination $targetDir -Recurse -Force
+
+            $exePath = Join-Path $targetDir 'keepdir.exe'
+            if (-not (Test-Path $exePath)) {
+                throw 'Updated executable was not installed.'
+            }
+            Start-Process $exePath
+        } finally {
+            if (Test-Path $tempDir) {
+                Remove-Item $tempDir -Recurse -Force -ErrorAction SilentlyContinue
+            }
+            Remove-Item $zipPath -Force -ErrorAction SilentlyContinue
+        }
       `;
 
       spawn('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', script], {

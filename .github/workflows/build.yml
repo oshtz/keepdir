@@ -45,13 +45,20 @@ jobs:
           }
           Write-Host "Found packaged app: $($packagedDir.FullName)"
 
-          # Rename the folder to just "keepdir-portable"
+          # Copy the packaged app to a stable directory before zipping.
           $portableDir = Join-Path $PWD "keepdir-portable"
+          if (Test-Path $portableDir) {
+            Remove-Item $portableDir -Recurse -Force
+          }
           Copy-Item -Path $packagedDir.FullName -Destination $portableDir -Recurse
 
-          # Create zip file
+          # Zip the app contents so keepdir.exe is at the archive root.
           $zipPath = Join-Path $PWD "keepdir-portable-windows.zip"
-          Compress-Archive -Path $portableDir -DestinationPath $zipPath -Force
+          $portableContents = Get-ChildItem -LiteralPath $portableDir -Force
+          if (-not $portableContents) {
+            throw "Portable app directory is empty"
+          }
+          Compress-Archive -Path $portableContents.FullName -DestinationPath $zipPath -Force
 
           $size = [math]::Round((Get-Item $zipPath).Length / 1MB, 2)
           Write-Host "Portable zip created: $size MB"

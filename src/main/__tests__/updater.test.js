@@ -11,8 +11,14 @@ const mockApp = {
   exit: jest.fn()
 };
 
+const mockSpawn = jest.fn(() => ({ unref: jest.fn() }));
+
 jest.mock('electron', () => ({
   app: mockApp
+}));
+
+jest.mock('child_process', () => ({
+  spawn: (...args) => mockSpawn(...args)
 }));
 
 jest.mock('axios', () => {
@@ -228,6 +234,46 @@ describe('updater trust boundary', () => {
       error: 'Update file checksum no longer matches the trusted download.'
     });
     expect(mockApp.exit).not.toHaveBeenCalled();
+  });
+
+  it('extracts Windows updates from the executable directory in the archive', async () => {
+    mockReleaseAndChecksum();
+    const checkResult = await updater.checkForUpdate();
+    axios.mockResolvedValue({
+      headers: {
+        'content-length': '5'
+      },
+      data: Readable.from([Buffer.from('hello')])
+    });
+    const downloadResult = await updater.downloadUpdate(checkResult.updateInfo);
+
+    jest.useFakeTimers();
+    try {
+      const result = await updater.installUpdate(downloadResult.updatePath);
+
+      expect(result).toEqual({ success: true });
+      expect(mockSpawn).toHaveBeenCalledWith(
+        'powershell',
+        expect.arrayContaining(['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', expect.any(String)]),
+        expect.objectContaining({
+          detached: true,
+          stdio: 'ignore',
+          windowsHide: true
+        })
+      );
+
+      const installScript = mockSpawn.mock.calls[0][1][4];
+      expect(installScript).toContain('$tempDir = Join-Path');
+      expect(installScript).toContain('Expand-Archive -Path $zipPath -DestinationPath $tempDir -Force');
+      expect(installScript).toContain("Get-ChildItem -Path $tempDir -Filter 'keepdir.exe' -File -Recurse");
+      expect(installScript).toContain('Get-ChildItem -LiteralPath $sourceDir -Force | Copy-Item -Destination $targetDir -Recurse -Force');
+      expect(installScript).not.toContain('Expand-Archive -Path $zipPath -DestinationPath $targetDir -Force');
+
+      jest.runOnlyPendingTimers();
+      expect(mockApp.exit).toHaveBeenCalledWith(0);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it('parses both raw and sha256sum-style checksum files', () => {
