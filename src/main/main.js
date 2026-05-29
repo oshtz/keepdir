@@ -10,6 +10,8 @@ const {
   applySortSuggestions
 } = require('./fileOperations');
 const {
+  assertNotSymbolicLink,
+  isAnalyzableDirectoryEntry,
   normalizeCacheAgeHours,
   normalizeOllamaModelName,
   normalizeProviderName,
@@ -675,7 +677,7 @@ function createWindow() {
       } else {
         // Otherwise process all non-directory files
         allFiles = files
-          .filter(file => !file.isDirectory())
+          .filter(isAnalyzableDirectoryEntry)
           .map(file => file.name);
       }
 
@@ -911,14 +913,15 @@ function createWindow() {
         // Get file details for the batch
         const fileDetails = await Promise.all(batchFiles.map(async (fileName) => {
           const filePath = path.join(directoryPath, fileName);
-          const stats = await fs.stat(filePath);
+          const stats = await fs.lstat(filePath);
+          assertNotSymbolicLink(stats, `Selected item ${fileName}`);
           let base64Content = '';
           let imageMimeType = '';
           let isImageFile = false;
 
           // Only process images and optimize image loading
           const imageMimeTypeFromName = renameFiles ? getImageMimeType(fileName) : null;
-          isImageFile = !!imageMimeTypeFromName;
+          isImageFile = stats.isFile() && !!imageMimeTypeFromName;
 
           if (isImageFile) {
             try {

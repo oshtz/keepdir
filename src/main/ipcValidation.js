@@ -113,6 +113,16 @@ function normalizeSelectedPaths(selectedPaths, directoryPath) {
   });
 }
 
+function assertNotSymbolicLink(stats, label = 'Path') {
+  if (stats && typeof stats.isSymbolicLink === 'function' && stats.isSymbolicLink()) {
+    throw new Error(`${label} cannot be a symbolic link.`);
+  }
+}
+
+function isAnalyzableDirectoryEntry(entry) {
+  return !entry.isDirectory() && !entry.isSymbolicLink();
+}
+
 function normalizeCacheAgeHours(maxAgeHours, defaultHours = 168) {
   if (maxAgeHours == null || maxAgeHours === '') {
     return defaultHours;
@@ -162,6 +172,8 @@ function normalizeOllamaModelName(modelName) {
 }
 
 module.exports = {
+  assertNotSymbolicLink,
+  isAnalyzableDirectoryEntry,
   normalizeAbsolutePath,
   normalizeCacheAgeHours,
   normalizeOllamaModelName,

@@ -3,6 +3,8 @@ const os = require('os');
 const path = require('path');
 
 const {
+  assertNotSymbolicLink,
+  isAnalyzableDirectoryEntry,
   normalizeCacheAgeHours,
   normalizeOllamaModelName,
   normalizeProviderName,
@@ -83,5 +85,24 @@ describe('main IPC validation', () => {
     const providers = getAllProviders();
     providers.openai = undefined;
     expect(getProvider('openai')).toBeDefined();
+  });
+
+  it('excludes symbolic links from directory analysis inputs', () => {
+    expect(isAnalyzableDirectoryEntry({
+      isDirectory: () => false,
+      isSymbolicLink: () => false
+    })).toBe(true);
+    expect(isAnalyzableDirectoryEntry({
+      isDirectory: () => true,
+      isSymbolicLink: () => false
+    })).toBe(false);
+    expect(isAnalyzableDirectoryEntry({
+      isDirectory: () => false,
+      isSymbolicLink: () => true
+    })).toBe(false);
+
+    expect(() => assertNotSymbolicLink({
+      isSymbolicLink: () => true
+    }, 'Selected item link.png')).toThrow('cannot be a symbolic link');
   });
 });
