@@ -1,5 +1,8 @@
 import '@testing-library/jest-dom';
 
+(globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
+(global as any).IS_REACT_ACT_ENVIRONMENT = true;
+
 // Mock electron API
 const mockElectronAPI = {
   // Window controls

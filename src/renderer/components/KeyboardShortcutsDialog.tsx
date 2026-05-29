@@ -144,7 +144,7 @@ const KeyboardShortcutsDialog: React.FC<KeyboardShortcutsDialogProps> = ({
         ))}
         
         <Box sx={{ mt: 4, p: 2, backgroundColor: 'info.light', borderRadius: 1.5 }}>
-          <Typography variant="body2" sx={{ fontFamily: 'var(--font-body)', color: 'info.dark' }}>
+          <Typography component="div" variant="body2" sx={{ fontFamily: 'var(--font-body)', color: 'info.dark' }}>
             <strong>Tip:</strong> Keyboard shortcuts are disabled when typing in input fields. 
             Press <Chip label="?" size="small" sx={{ mx: 0.5, fontSize: '0.7rem' }} /> to show this dialog anytime.
           </Typography>

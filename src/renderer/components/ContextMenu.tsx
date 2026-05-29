@@ -55,12 +55,18 @@ const ContextMenu: React.FC<ContextMenuProps> = ({
         sx: { py: 1 }
       }}
     >
-      {items.map((item, index) => (
-        <React.Fragment key={item.id}>
-          {item.divider && index > 0 && (
-            <Divider sx={{ my: 0.5, mx: 1 }} />
-          )}
+      {items.flatMap((item, index) => {
+        const renderedItems: React.ReactElement[] = [];
+
+        if (item.divider && index > 0) {
+          renderedItems.push(
+            <Divider key={`${item.id}-divider`} sx={{ my: 0.5, mx: 1 }} />
+          );
+        }
+
+        renderedItems.push(
           <MenuItem
+            key={item.id}
             onClick={() => onItemClick(item)}
             disabled={item.disabled}
             sx={{
@@ -98,8 +104,10 @@ const ContextMenu: React.FC<ContextMenuProps> = ({
               </Box>
             )}
           </MenuItem>
-        </React.Fragment>
-      ))}
+        );
+
+        return renderedItems;
+      })}
     </Menu>
   );
 };

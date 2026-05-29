@@ -1,11 +1,17 @@
 import React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { act, render, screen, fireEvent, waitFor } from '@testing-library/react';
 import FloatingActionButton from '../FloatingActionButton';
 
 // Mock framer-motion
 jest.mock('framer-motion', () => ({
   motion: {
-    div: ({ children, ...props }: any) => <div data-testid="motion-div" {...props}>{children}</div>,
+    div: ({ children, ...props }: any) => {
+      const motionProps = new Set(['whileHover', 'whileTap', 'initial', 'animate', 'exit', 'transition', 'variants']);
+      const domProps = Object.fromEntries(
+        Object.entries(props).filter(([key]) => !motionProps.has(key))
+      );
+      return <div data-testid="motion-div" {...domProps}>{children}</div>;
+    },
   },
   AnimatePresence: ({ children }: any) => <div data-testid="animate-presence">{children}</div>,
 }));
@@ -17,7 +23,9 @@ describe('FloatingActionButton', () => {
   });
 
   afterEach(() => {
-    jest.runOnlyPendingTimers();
+    act(() => {
+      jest.runOnlyPendingTimers();
+    });
     jest.useRealTimers();
   });
 
@@ -135,7 +143,9 @@ describe('FloatingActionButton', () => {
     fireEvent.click(fab, { clientX: 128, clientY: 128 });
 
     // Fast-forward time to trigger ripple removal
-    jest.advanceTimersByTime(600);
+    act(() => {
+      jest.advanceTimersByTime(600);
+    });
 
     // The ripple should be removed after the timeout
     await waitFor(() => {
