@@ -14,8 +14,8 @@
     "typecheck": "tsc --noEmit --pretty false",
     "test": "jest",
     "test:watch": "jest --watch",
-    "test:coverage": "jest --coverage",
-    "test:ci": "jest --ci --coverage --watchAll=false"
+    "test:coverage": "jest --coverage --runInBand",
+    "test:ci": "jest --ci --watchAll=false --runInBand"
   },
   "author": "oshtz",
   "license": "MIT",
