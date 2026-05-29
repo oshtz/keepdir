@@ -17,6 +17,12 @@ const {
   requireExistingDirectoryPath,
   requireExistingFileOrDirectoryPath
 } = require('./ipcValidation');
+const {
+  normalizeImportOptions,
+  readJsonImportFile,
+  validateAllDataImport,
+  validateWorkspaceImportData
+} = require('./importValidation');
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (require('electron-squirrel-startup')) {
@@ -494,6 +500,8 @@ function createWindow() {
 
   registerHandler('import-workspace', async (event, options = {}) => {
     try {
+      const importOptions = normalizeImportOptions(options);
+
       // Show open dialog
       const result = await dialog.showOpenDialog(mainWindow, {
         title: 'Import Workspace',
@@ -509,15 +517,8 @@ function createWindow() {
       }
 
       const filePath = result.filePaths[0];
-      const fileContent = await fs.readFile(filePath, 'utf8');
-      const workspaceData = JSON.parse(fileContent);
-
-      // Validate workspace data structure
-      if (!workspaceData.workspace || !workspaceData.version) {
-        throw new Error('Invalid workspace file format');
-      }
-
-      const importResult = await db.importWorkspace(workspaceData, options);
+      const workspaceData = validateWorkspaceImportData(await readJsonImportFile(filePath));
+      const importResult = await db.importWorkspace(workspaceData, importOptions);
       return importResult;
     } catch (error) {
       console.error('Failed to import workspace:', error);
@@ -553,6 +554,8 @@ function createWindow() {
 
   registerHandler('import-all-data', async (event, options = {}) => {
     try {
+      const importOptions = normalizeImportOptions(options);
+
       // Show open dialog
       const result = await dialog.showOpenDialog(mainWindow, {
         title: 'Import All Data (Restore Backup)',
@@ -568,15 +571,8 @@ function createWindow() {
       }
 
       const filePath = result.filePaths[0];
-      const fileContent = await fs.readFile(filePath, 'utf8');
-      const backupData = JSON.parse(fileContent);
-
-      // Validate backup data structure
-      if (!backupData.version || !backupData.exportedAt) {
-        throw new Error('Invalid backup file format');
-      }
-
-      const importResult = await db.importAllData(backupData, options);
+      const backupData = validateAllDataImport(await readJsonImportFile(filePath));
+      const importResult = await db.importAllData(backupData, importOptions);
       return importResult;
     } catch (error) {
       console.error('Failed to import all data:', error);
