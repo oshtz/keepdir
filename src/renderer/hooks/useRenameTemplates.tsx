@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 
 export interface RenameTemplate {
   id: string;
@@ -210,39 +210,75 @@ export const applyTemplate = (
 export const useRenameTemplates = () => {
   const [customTemplates, setCustomTemplates] = useState<RenameTemplate[]>([]);
   const [recentlyUsed, setRecentlyUsed] = useState<string[]>([]);
+  const templatesLoadedRef = useRef(false);
 
-  // Load custom templates from localStorage
+  // Load custom templates from database-backed settings, then migrate old localStorage data.
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem('customRenameTemplates');
-      if (saved) {
-        setCustomTemplates(JSON.parse(saved));
+    const loadTemplates = async () => {
+      try {
+        if (!window.electronAPI?.loadSettings) {
+          return;
+        }
+
+        const result = await window.electronAPI.loadSettings();
+        const settings = (result.settings || {}) as Record<string, any>;
+        const hasPersistedTemplates = settings.customRenameTemplates !== undefined && settings.customRenameTemplates !== null;
+        const hasPersistedRecent = settings.recentRenameTemplates !== undefined && settings.recentRenameTemplates !== null;
+        const savedTemplates = hasPersistedTemplates ? settings.customRenameTemplates : localStorage.getItem('customRenameTemplates');
+        const savedRecent = hasPersistedRecent ? settings.recentRenameTemplates : localStorage.getItem('recentRenameTemplates');
+
+        if (savedTemplates) {
+          setCustomTemplates(typeof savedTemplates === 'string' ? JSON.parse(savedTemplates) : savedTemplates);
+        }
+        if (savedRecent) {
+          setRecentlyUsed(typeof savedRecent === 'string' ? JSON.parse(savedRecent) : savedRecent);
+        }
+        const migratedSettings: Record<string, unknown> = {};
+        if (!hasPersistedTemplates && localStorage.getItem('customRenameTemplates')) {
+          migratedSettings.customRenameTemplates = JSON.parse(localStorage.getItem('customRenameTemplates') || '[]');
+        }
+        if (!hasPersistedRecent && localStorage.getItem('recentRenameTemplates')) {
+          migratedSettings.recentRenameTemplates = JSON.parse(localStorage.getItem('recentRenameTemplates') || '[]');
+        }
+        if (Object.keys(migratedSettings).length > 0) {
+          await window.electronAPI?.saveSettings?.(migratedSettings);
+          localStorage.removeItem('customRenameTemplates');
+          localStorage.removeItem('recentRenameTemplates');
+        }
+      } catch (error) {
+        console.error('Failed to load custom templates:', error);
+      } finally {
+        templatesLoadedRef.current = true;
       }
-      const recent = localStorage.getItem('recentRenameTemplates');
-      if (recent) {
-        setRecentlyUsed(JSON.parse(recent));
-      }
-    } catch (error) {
-      console.error('Failed to load custom templates:', error);
-    }
+    };
+
+    loadTemplates();
   }, []);
 
-  // Save custom templates to localStorage
+  // Save custom templates to database-backed settings.
   useEffect(() => {
-    try {
-      localStorage.setItem('customRenameTemplates', JSON.stringify(customTemplates));
-    } catch (error) {
-      console.error('Failed to save custom templates:', error);
+    if (!templatesLoadedRef.current) {
+      return;
     }
+    if (!window.electronAPI?.saveSettings) {
+      return;
+    }
+    window.electronAPI.saveSettings({ customRenameTemplates: customTemplates }).catch((error) => {
+      console.error('Failed to save custom templates:', error);
+    });
   }, [customTemplates]);
 
-  // Save recently used to localStorage
+  // Save recently used templates to database-backed settings.
   useEffect(() => {
-    try {
-      localStorage.setItem('recentRenameTemplates', JSON.stringify(recentlyUsed));
-    } catch (error) {
-      console.error('Failed to save recent templates:', error);
+    if (!templatesLoadedRef.current) {
+      return;
     }
+    if (!window.electronAPI?.saveSettings) {
+      return;
+    }
+    window.electronAPI.saveSettings({ recentRenameTemplates: recentlyUsed }).catch((error) => {
+      console.error('Failed to save recent templates:', error);
+    });
   }, [recentlyUsed]);
 
   const allTemplates = [...builtInTemplates, ...customTemplates];

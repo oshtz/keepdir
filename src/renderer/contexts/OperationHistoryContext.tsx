@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
 
 // Types for file operations
 export type OperationType = 'rename' | 'move' | 'sort' | 'delete' | 'create';
@@ -93,37 +93,53 @@ export const OperationHistoryProvider: React.FC<{ children: React.ReactNode }> =
   const [batchExecutionState, setBatchExecutionState] = useState<BatchExecutionState | null>(null);
   const [pausedBatches, setPausedBatches] = useState<Set<string>>(new Set());
   const [cancelledBatches, setCancelledBatches] = useState<Set<string>>(new Set());
+  const historyLoadedRef = useRef(false);
 
-  // Load history from localStorage on mount
+  const reviveHistory = (rawHistory: any[]): BatchOperation[] => rawHistory.map((batch: any) => ({
+    ...batch,
+    timestamp: new Date(batch.timestamp),
+    operations: batch.operations.map((op: any) => ({
+      ...op,
+      timestamp: new Date(op.timestamp)
+    }))
+  }));
+
+  // Load history from database-backed settings, then migrate old localStorage data.
   useEffect(() => {
-    try {
-      const savedHistory = localStorage.getItem('operationHistory');
-      if (savedHistory) {
-        const parsed = JSON.parse(savedHistory);
-        // Convert date strings back to Date objects
-        const historyWithDates = parsed.map((batch: any) => ({
-          ...batch,
-          timestamp: new Date(batch.timestamp),
-          operations: batch.operations.map((op: any) => ({
-            ...op,
-            timestamp: new Date(op.timestamp)
-          }))
-        }));
-        setHistory(historyWithDates);
-        setCurrentBatchIndex(historyWithDates.length - 1);
+    const loadHistory = async () => {
+      try {
+        const result = await window.electronAPI.loadSettings();
+        const persistedHistory = result.settings?.operationHistory;
+        const hasPersistedHistory = persistedHistory !== undefined && persistedHistory !== null;
+        const savedHistory = hasPersistedHistory ? persistedHistory : localStorage.getItem('operationHistory');
+        if (savedHistory) {
+          const parsed = typeof savedHistory === 'string' ? JSON.parse(savedHistory) : savedHistory;
+          const historyWithDates = reviveHistory(parsed);
+          if (!hasPersistedHistory && historyWithDates.length > 0) {
+            await window.electronAPI.saveSettings({ operationHistory: historyWithDates });
+          }
+          localStorage.removeItem('operationHistory');
+          setHistory(historyWithDates);
+          setCurrentBatchIndex(historyWithDates.length - 1);
+        }
+      } catch (error) {
+        console.error('Failed to load operation history:', error);
+      } finally {
+        historyLoadedRef.current = true;
       }
-    } catch (error) {
-      console.error('Failed to load operation history:', error);
-    }
+    };
+
+    loadHistory();
   }, []);
 
-  // Save history to localStorage when it changes
+  // Save history to database-backed settings so backups include it.
   useEffect(() => {
-    try {
-      localStorage.setItem('operationHistory', JSON.stringify(history));
-    } catch (error) {
-      console.error('Failed to save operation history:', error);
+    if (!historyLoadedRef.current) {
+      return;
     }
+    window.electronAPI.saveSettings({ operationHistory: history }).catch((error) => {
+      console.error('Failed to save operation history:', error);
+    });
   }, [history]);
 
   const canUndo = currentBatchIndex >= 0 && history.length > 0;

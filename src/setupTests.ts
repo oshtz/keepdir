@@ -16,6 +16,7 @@ const mockElectronAPI = {
   // Settings
   saveSettings: jest.fn(),
   loadSettings: jest.fn(),
+  getProviderModels: jest.fn(),
   
   // Workspace operations
   getWorkspaces: jest.fn(),
@@ -60,12 +61,19 @@ const mockElectronAPI = {
   pullOllamaModel: jest.fn(),
   listOllamaModels: jest.fn(),
   deleteOllamaModel: jest.fn(),
+
+  // Auto-update
+  getAppVersion: jest.fn(),
+  checkForUpdate: jest.fn(),
+  downloadUpdate: jest.fn(),
+  installUpdate: jest.fn(),
   
   // Event handlers
   onAnalyzeProgress: jest.fn(() => jest.fn()),
   onRenameProgress: jest.fn(() => jest.fn()),
   onSortProgress: jest.fn(() => jest.fn()),
   onOllamaModelPullProgress: jest.fn(() => jest.fn()),
+  onUpdateDownloadProgress: jest.fn(() => jest.fn()),
   
   // Workspace sharing
   generateWorkspaceShareCode: jest.fn(),

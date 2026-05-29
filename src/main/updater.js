@@ -7,6 +7,8 @@ const { spawn } = require('child_process');
 // Configuration
 const GITHUB_REPO = 'oshtz/keepdir';
 const UPDATE_DIR_NAME = 'updates';
+let lastUpdateInfo = null;
+let downloadedUpdatePath = null;
 
 // Platform-specific asset patterns
 // Windows: exact match for portable zip
@@ -27,6 +29,54 @@ const ASSET_PATTERNS = {
  */
 function getUpdateDir() {
   return path.join(app.getPath('userData'), UPDATE_DIR_NAME);
+}
+
+function getSafeUpdatePath(assetName, version) {
+  const updateDir = path.resolve(getUpdateDir());
+  const fallbackName = `keepdir-${version}.zip`;
+  const fileName = path.basename(assetName || fallbackName);
+
+  if (!fileName || !fileName.toLowerCase().endsWith('.zip')) {
+    throw new Error('Update asset must be a zip file.');
+  }
+
+  const updatePath = path.resolve(updateDir, fileName);
+  if (path.dirname(updatePath) !== updateDir) {
+    throw new Error('Invalid update asset path.');
+  }
+
+  return updatePath;
+}
+
+function isTrustedDownloadUrl(downloadUrl) {
+  try {
+    const parsed = new URL(downloadUrl);
+    return (
+      parsed.protocol === 'https:' &&
+      parsed.hostname === 'github.com' &&
+      parsed.pathname.startsWith(`/${GITHUB_REPO}/releases/download/`)
+    );
+  } catch {
+    return false;
+  }
+}
+
+function assertMatchesLastUpdate(updateInfo) {
+  if (!lastUpdateInfo) {
+    throw new Error('Check for updates before downloading.');
+  }
+
+  if (!updateInfo) {
+    return lastUpdateInfo;
+  }
+
+  for (const key of ['version', 'downloadUrl', 'assetName']) {
+    if (updateInfo[key] && updateInfo[key] !== lastUpdateInfo[key]) {
+      throw new Error('Update details do not match the latest trusted update check.');
+    }
+  }
+
+  return lastUpdateInfo;
 }
 
 /**
@@ -68,6 +118,8 @@ async function checkForUpdate(mainWindow) {
   }
 
   try {
+    lastUpdateInfo = null;
+    downloadedUpdatePath = null;
     const currentVersion = app.getVersion();
     const apiUrl = `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`;
 
@@ -120,15 +172,22 @@ async function checkForUpdate(mainWindow) {
       return { error: 'No compatible update asset found for this platform.' };
     }
 
+    const updateInfo = {
+      version: latestVersion,
+      notes: release.body || null,
+      publishedAt: release.published_at || null,
+      downloadUrl: asset.browser_download_url,
+      assetName: asset.name,
+      assetSize: asset.size
+    };
+
+    if (!isTrustedDownloadUrl(updateInfo.downloadUrl)) {
+      return { error: 'Release asset URL is not trusted.' };
+    }
+
+    lastUpdateInfo = updateInfo;
     return {
-      updateInfo: {
-        version: latestVersion,
-        notes: release.body || null,
-        publishedAt: release.published_at || null,
-        downloadUrl: asset.browser_download_url,
-        assetName: asset.name,
-        assetSize: asset.size
-      }
+      updateInfo
     };
   } catch (error) {
     if (error.response) {
@@ -155,11 +214,12 @@ async function downloadUpdate(updateInfo, mainWindow) {
     return { error: 'Updates are disabled in development mode.' };
   }
 
-  if (!updateInfo || !updateInfo.downloadUrl) {
-    return { error: 'Invalid update info.' };
-  }
-
   try {
+    const trustedUpdateInfo = assertMatchesLastUpdate(updateInfo);
+    if (!isTrustedDownloadUrl(trustedUpdateInfo.downloadUrl)) {
+      return { error: 'Release asset URL is not trusted.' };
+    }
+
     // Create updates directory
     const updateDir = getUpdateDir();
     if (!fs.existsSync(updateDir)) {
@@ -167,13 +227,13 @@ async function downloadUpdate(updateInfo, mainWindow) {
     }
 
     // Determine filename
-    const fileName = updateInfo.assetName || `keepdir-${updateInfo.version}.zip`;
-    const updatePath = path.join(updateDir, fileName);
+    const updatePath = getSafeUpdatePath(trustedUpdateInfo.assetName, trustedUpdateInfo.version);
+    downloadedUpdatePath = null;
 
     // Download with progress reporting
     const response = await axios({
       method: 'get',
-      url: updateInfo.downloadUrl,
+      url: trustedUpdateInfo.downloadUrl,
       responseType: 'stream',
       timeout: 300000, // 5 minute timeout for large files
       headers: {
@@ -181,7 +241,7 @@ async function downloadUpdate(updateInfo, mainWindow) {
       }
     });
 
-    const totalLength = parseInt(response.headers['content-length'], 10) || updateInfo.assetSize || 0;
+    const totalLength = parseInt(response.headers['content-length'], 10) || trustedUpdateInfo.assetSize || 0;
     let downloaded = 0;
 
     const writer = fs.createWriteStream(updatePath);
@@ -200,9 +260,18 @@ async function downloadUpdate(updateInfo, mainWindow) {
       }
     });
 
-    return new Promise((resolve, reject) => {
+    await new Promise((resolve, reject) => {
       writer.on('finish', () => {
-        resolve({ updatePath });
+        if (trustedUpdateInfo.assetSize && downloaded !== trustedUpdateInfo.assetSize) {
+          try {
+            fs.unlinkSync(updatePath);
+          } catch (e) {
+            // Ignore cleanup errors
+          }
+          reject(new Error('Downloaded update size did not match the release asset size.'));
+          return;
+        }
+        resolve();
       });
 
       writer.on('error', (err) => {
@@ -217,6 +286,9 @@ async function downloadUpdate(updateInfo, mainWindow) {
 
       response.data.pipe(writer);
     });
+
+    downloadedUpdatePath = updatePath;
+    return { updatePath };
   } catch (error) {
     console.error('Download failed:', error.message);
     return { error: `Failed to download update: ${error.message}` };
@@ -233,11 +305,23 @@ async function installUpdate(updatePath) {
     return { error: 'Updates are disabled in development mode.' };
   }
 
-  if (!updatePath || !fs.existsSync(updatePath)) {
-    return { error: 'Update file not found.' };
-  }
-
   try {
+    if (!downloadedUpdatePath) {
+      return { error: 'Download the trusted update before installing.' };
+    }
+
+    const updateDir = path.resolve(getUpdateDir());
+    const resolvedUpdatePath = path.resolve(updatePath || '');
+    const expectedUpdatePath = path.resolve(downloadedUpdatePath);
+
+    if (resolvedUpdatePath !== expectedUpdatePath || path.dirname(resolvedUpdatePath) !== updateDir) {
+      return { error: 'Update file does not match the trusted download.' };
+    }
+
+    if (!fs.existsSync(resolvedUpdatePath)) {
+      return { error: 'Update file not found.' };
+    }
+
     const currentExe = process.execPath;
     const currentDir = path.dirname(currentExe);
     const pid = process.pid;
@@ -247,7 +331,7 @@ async function installUpdate(updatePath) {
       const script = `
         $ErrorActionPreference = 'Stop'
         $procId = ${pid}
-        $zipPath = '${updatePath.replace(/'/g, "''")}'
+        $zipPath = '${resolvedUpdatePath.replace(/'/g, "''")}'
         $targetDir = '${currentDir.replace(/'/g, "''")}'
 
         # Wait for app to exit
@@ -298,7 +382,7 @@ async function installUpdate(updatePath) {
 
       const script = `
         pid=${pid}
-        zipPath='${updatePath.replace(/'/g, "'\\''")}'
+        zipPath='${resolvedUpdatePath.replace(/'/g, "'\\''")}'
         appBundleDir='${appBundleDir.replace(/'/g, "'\\''")}'
         appBundleName='${appBundleName.replace(/'/g, "'\\''")}'
         appBundlePath='${appBundle.replace(/'/g, "'\\''")}'

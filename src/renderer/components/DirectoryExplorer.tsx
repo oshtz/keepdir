@@ -43,6 +43,8 @@ import {
   FileInfo,
   SortSuggestions as SortSuggestionsType,
   FileRename,
+  RenameApplyResult,
+  SortApplyResult,
 } from "../electron";
 import SortSuggestions from "./SortSuggestions";
 import RenameDialog from "./RenameDialog";
@@ -441,14 +443,24 @@ const DirectoryExplorer: React.FC<DirectoryExplorerProps> = ({
     const batchId = startBatch(`Rename ${suggestions.renames.length} files`, currentDirectoryPath);
 
     try {
-      await applyRenameSuggestions(suggestions, batchId);
+      const result = await applyRenameSuggestions(suggestions, batchId);
+      const renamedCount = result.renamedFiles?.length ?? 0;
+      const errorCount = result.errors?.length ?? 0;
       setSelectedItems(new Set()); // Clear selections after renaming
       completeBatch(batchId);
-      showSuccess(
-        `Successfully renamed ${suggestions.renames.length} files`,
-        'Rename Complete',
-        canUndo ? { label: 'Undo', onClick: () => undo() } : undefined
-      );
+      if (errorCount > 0) {
+        showWarning(
+          `Renamed ${renamedCount} files; ${errorCount} failed`,
+          'Rename Partially Complete',
+          renamedCount > 0 && canUndo ? { label: 'Undo', onClick: () => undo() } : undefined
+        );
+      } else {
+        showSuccess(
+          `Successfully renamed ${renamedCount} files`,
+          'Rename Complete',
+          canUndo ? { label: 'Undo', onClick: () => undo() } : undefined
+        );
+      }
     } catch (error) {
       failBatch(batchId, error instanceof Error ? error.message : 'Unknown error');
       setError("Failed to apply renames");
@@ -461,8 +473,8 @@ const DirectoryExplorer: React.FC<DirectoryExplorerProps> = ({
 
   const applyRenameSuggestions = async (suggestions: {
     renames: FileRename[];
-  }, batchId?: string) => {
-    if (!currentDirectoryPath) return;
+  }, batchId?: string): Promise<RenameApplyResult> => {
+    if (!currentDirectoryPath) return { success: false, error: "No directory selected" };
 
     setAnalyzing(true);
     setError(undefined);
@@ -485,31 +497,40 @@ const DirectoryExplorer: React.FC<DirectoryExplorerProps> = ({
         renameSuggestions,
       );
       
+      const errorsByFile = new Map((result.errors || []).map((item) => [item.file, item.error]));
+      const renamedByOriginal = new Map((result.renamedFiles || []).map((item) => [item.original, item.new]));
+
       // Track individual operations if batchId provided
       if (batchId) {
         suggestions.renames.forEach((rename) => {
+          const error = errorsByFile.get(rename.originalName);
+          const actualName = renamedByOriginal.get(rename.originalName) || rename.suggestedName;
           addOperation(batchId, {
             type: 'rename',
             originalPath: `${currentDirectoryPath}/${rename.originalName}`,
-            newPath: `${currentDirectoryPath}/${rename.suggestedName}`,
+            newPath: `${currentDirectoryPath}/${actualName}`,
             originalName: rename.originalName,
-            newName: rename.suggestedName,
-            status: result.error ? 'failed' : 'completed',
-            error: result.error,
+            newName: actualName,
+            status: error ? 'failed' : 'completed',
+            error,
             metadata: { reason: rename.reason }
           });
         });
       }
       
-      if (result.error) {
-        setError(result.error);
-      } else {
-        await loadDirectory(currentDirectoryPath);
-        setRenameDialogOpen(false);
+      if (result.error && !result.partial) {
+        throw new Error(result.error);
       }
+      if (result.errors?.length) {
+        setError(result.errors.map((item) => `${item.file}: ${item.error}`).join("; "));
+      }
+      await loadDirectory(currentDirectoryPath);
+      setRenameDialogOpen(false);
+      return result;
     } catch (error) {
       setError("Failed to apply renames");
       console.error("Failed to apply renames:", error);
+      throw error;
     } finally {
       setAnalyzing(false);
     }
@@ -526,22 +547,26 @@ const DirectoryExplorer: React.FC<DirectoryExplorerProps> = ({
     const batchId = startBatch(`Sort ${totalFiles} files into ${suggestions.categories.length} folders`, currentDirectoryPath);
 
     try {
-      const result = await window.electronAPI.applySuggestions(
+      const result: SortApplyResult = await window.electronAPI.applySuggestions(
         currentDirectoryPath,
         suggestions,
       );
-      
+      const errorsByFile = new Map((result.errors || []).map((item) => [item.file, item.error]));
+      const movedByOriginal = new Map((result.movedFiles || []).map((item) => [item.original, item.new]));
+
       // Track individual operations
       suggestions.categories.forEach((category) => {
         category.files.forEach((file) => {
+          const error = errorsByFile.get(file);
+          const actualPath = movedByOriginal.get(file) || `${category.suggestedPath}/${file}`;
           addOperation(batchId, {
             type: 'move',
             originalPath: `${currentDirectoryPath}/${file}`,
-            newPath: `${currentDirectoryPath}/${category.suggestedPath}/${file}`,
+            newPath: `${currentDirectoryPath}/${actualPath}`,
             originalName: file,
             newName: file,
-            status: result.error ? 'failed' : 'completed',
-            error: result.error,
+            status: error ? 'failed' : 'completed',
+            error,
             metadata: { 
               category: category.name,
               description: category.description 
@@ -550,7 +575,7 @@ const DirectoryExplorer: React.FC<DirectoryExplorerProps> = ({
         });
       });
       
-      if (result.error) {
+      if (result.error && !result.partial) {
         failBatch(batchId, result.error);
         setError(result.error);
         showError(result.error, "Sort Failed");
@@ -559,11 +584,21 @@ const DirectoryExplorer: React.FC<DirectoryExplorerProps> = ({
         await loadDirectory(currentDirectoryPath);
         setSortDialogOpen(false);
         setSelectedItems(new Set()); // Clear selections after sorting
-        showSuccess(
-          `Successfully organized ${totalFiles} files into ${suggestions.categories.length} folders`,
-          'Organization Complete',
-          canUndo ? { label: 'Undo', onClick: () => undo() } : undefined
-        );
+        const movedCount = result.movedFiles?.length ?? 0;
+        const errorCount = result.errors?.length ?? 0;
+        if (errorCount > 0) {
+          showWarning(
+            `Organized ${movedCount} files; ${errorCount} failed`,
+            'Organization Partially Complete',
+            movedCount > 0 && canUndo ? { label: 'Undo', onClick: () => undo() } : undefined
+          );
+        } else {
+          showSuccess(
+            `Successfully organized ${movedCount} files into ${suggestions.categories.length} folders`,
+            'Organization Complete',
+            canUndo ? { label: 'Undo', onClick: () => undo() } : undefined
+          );
+        }
       }
     } catch (error) {
       failBatch(batchId, error instanceof Error ? error.message : 'Unknown error');

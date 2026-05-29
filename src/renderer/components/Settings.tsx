@@ -56,6 +56,7 @@ interface Settings {
   selectedProvider?: string;
   selectedModel?: string;
   renameFiles: boolean;
+  [key: string]: any;
 }
 
 const defaultSettings: Settings = {
@@ -120,22 +121,35 @@ const Settings: React.FC<SettingsProps> = ({
   });
   const [newExclusionPattern, setNewExclusionPattern] = useState("");
 
-  // Load AI rules from localStorage
+  // Load AI rules from database-backed settings, then migrate old localStorage data.
   useEffect(() => {
-    const savedRules = localStorage.getItem('aiRules');
-    if (savedRules) {
+    const loadAiRules = async () => {
       try {
-        setAiRules(JSON.parse(savedRules));
+        const result = await window.electronAPI.loadSettings();
+        const persistedRules = result.settings?.aiRules;
+        const savedRules = persistedRules || localStorage.getItem('aiRules');
+        if (savedRules) {
+          const parsedRules = typeof savedRules === 'string' ? JSON.parse(savedRules) : savedRules;
+          setAiRules(parsedRules);
+          if (!persistedRules) {
+            await window.electronAPI.saveSettings({ aiRules: parsedRules });
+            localStorage.removeItem('aiRules');
+          }
+        }
       } catch (e) {
         console.error('Failed to parse saved AI rules:', e);
       }
-    }
+    };
+
+    loadAiRules();
   }, []);
 
-  // Save AI rules to localStorage when changed
+  // Save AI rules to database-backed settings so backups include them.
   const saveAiRules = useCallback((newRules: typeof aiRules) => {
     setAiRules(newRules);
-    localStorage.setItem('aiRules', JSON.stringify(newRules));
+    window.electronAPI.saveSettings({ aiRules: newRules }).catch((error) => {
+      console.error('Failed to save AI rules:', error);
+    });
   }, []);
 
   const addExclusionPattern = () => {

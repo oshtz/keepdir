@@ -100,6 +100,11 @@ const mockElectronAPI = {
   selectDirectory: jest.fn(),
   pullOllamaModel: jest.fn(),
   onOllamaModelPullProgress: jest.fn(() => jest.fn()),
+  getAppVersion: jest.fn(),
+  checkForUpdate: jest.fn(),
+  downloadUpdate: jest.fn(),
+  installUpdate: jest.fn(),
+  onUpdateDownloadProgress: jest.fn(() => jest.fn()),
 };
 
 Object.defineProperty(window, 'electronAPI', {

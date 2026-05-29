@@ -148,7 +148,7 @@ describe('Settings', () => {
     });
     
     // The tabs should be present
-    expect(screen.getByText('API Keys')).toBeInTheDocument();
+    expect(screen.getByText('AI Providers')).toBeInTheDocument();
   });
 
   it('should render workspace management tab', async () => {
@@ -180,7 +180,7 @@ describe('Settings', () => {
       render(<Settings {...defaultProps} isOllamaAvailable={true} />);
     });
     
-    expect(screen.getByText('Ollama')).toBeInTheDocument();
+    expect(screen.getByText('AI Providers')).toBeInTheDocument();
   });
 
   it('should render ollama tab when not available', async () => {
@@ -188,7 +188,7 @@ describe('Settings', () => {
       render(<Settings {...defaultProps} isOllamaAvailable={false} />);
     });
     
-    expect(screen.getByText('Ollama')).toBeInTheDocument();
+    expect(screen.getByText('AI Providers')).toBeInTheDocument();
   });
 
   it('should call onClose when close button is clicked', async () => {
@@ -300,7 +300,7 @@ describe('Settings', () => {
       });
       
       // Click on API Keys tab
-      const apiKeysTab = screen.getByText('API Keys');
+      const apiKeysTab = screen.getByText('AI Providers');
       await act(async () => {
         fireEvent.click(apiKeysTab);
       });
@@ -321,7 +321,7 @@ describe('Settings', () => {
       });
       
       // Click on API Keys tab
-      const apiKeysTab = screen.getByText('API Keys');
+      const apiKeysTab = screen.getByText('AI Providers');
       await act(async () => {
         fireEvent.click(apiKeysTab);
       });
@@ -342,7 +342,7 @@ describe('Settings', () => {
       });
       
       // Click on API Keys tab
-      const apiKeysTab = screen.getByText('API Keys');
+      const apiKeysTab = screen.getByText('AI Providers');
       await act(async () => {
         fireEvent.click(apiKeysTab);
       });
@@ -367,7 +367,7 @@ describe('Settings', () => {
       });
       
       // Click on Ollama tab
-      const ollamaTab = screen.getByText('Ollama');
+      const ollamaTab = screen.getByText('AI Providers');
       await act(async () => {
         fireEvent.click(ollamaTab);
       });
@@ -395,7 +395,7 @@ describe('Settings', () => {
       });
       
       // Click on Ollama tab
-      const ollamaTab = screen.getByText('Ollama');
+      const ollamaTab = screen.getByText('AI Providers');
       await act(async () => {
         fireEvent.click(ollamaTab);
       });
@@ -417,7 +417,7 @@ describe('Settings', () => {
       });
       
       // Click on Ollama tab
-      const ollamaTab = screen.getByText('Ollama');
+      const ollamaTab = screen.getByText('AI Providers');
       await act(async () => {
         fireEvent.click(ollamaTab);
       });
@@ -654,12 +654,7 @@ describe('Settings', () => {
         fireEvent.click(resetButton);
       });
       
-      expect(mockWorkspaceContext.setWorkspaceTheme).toHaveBeenCalledWith({
-        name: 'Test Workspace Theme',
-        accentColor: '#FF5733',
-        darkMode: false,
-        customColors: {}
-      });
+      expect(mockWorkspaceContext.setWorkspaceTheme).toHaveBeenCalledWith(null);
     });
   });
 
@@ -968,7 +963,7 @@ describe('Settings', () => {
       });
 
       // Click on Ollama tab
-      const ollamaTab = screen.getByText('Ollama');
+      const ollamaTab = screen.getByText('AI Providers');
       await act(async () => {
         fireEvent.click(ollamaTab);
       });
@@ -994,7 +989,7 @@ describe('Settings', () => {
       });
 
       // Click on Ollama tab
-      const ollamaTab = screen.getByText('Ollama');
+      const ollamaTab = screen.getByText('AI Providers');
       await act(async () => {
         fireEvent.click(ollamaTab);
       });

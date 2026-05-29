@@ -44,6 +44,7 @@ export interface Settings {
     openrouter?: string;
   };
   renameFiles: boolean;
+  [key: string]: any;
 }
 
 export interface ProgressInfo {
@@ -75,6 +76,27 @@ export interface UpdateDownloadProgress {
   percent: number;
   downloaded: number;
   total: number;
+}
+
+export interface FileOperationError {
+  file: string;
+  error: string;
+}
+
+export interface RenameApplyResult {
+  success?: boolean;
+  partial?: boolean;
+  renamedFiles?: Array<{ original: string; new: string }>;
+  errors?: FileOperationError[];
+  error?: string;
+}
+
+export interface SortApplyResult {
+  success?: boolean;
+  partial?: boolean;
+  movedFiles?: Array<{ original: string; new: string; category?: string }>;
+  errors?: FileOperationError[];
+  error?: string;
 }
 
 export interface FolderItem {
@@ -119,7 +141,7 @@ export interface ElectronAPI {
   // Directory operations
   loadDirectory: (path: string) => Promise<{ files?: FileInfo[], error?: string }>;
   selectDirectory: () => Promise<string | null>;
-  saveSettings: (settings: Settings) => Promise<{ success?: boolean, error?: string }>;
+  saveSettings: (settings: Record<string, any>) => Promise<{ success?: boolean, error?: string }>;
   loadSettings: () => Promise<{ settings?: Settings, error?: string }>;
   getProviderModels: (provider: string) => Promise<{ models?: string[], defaultModel?: string, error?: string }>;
   analyzeDirectory: (path: string, renameFiles: boolean) => Promise<{ suggestions?: SortSuggestions, error?: string }>;
@@ -127,8 +149,8 @@ export interface ElectronAPI {
   analyzeDirectoryForRename: (path: string, selectedPaths?: string[]) => Promise<{ suggestions?: SortSuggestions, error?: string }>;
   analyzeDirectoryForSortFresh: (path: string, selectedPaths?: string[]) => Promise<{ suggestions?: SortSuggestions, error?: string }>;
   analyzeDirectoryForRenameFresh: (path: string, selectedPaths?: string[]) => Promise<{ suggestions?: SortSuggestions, error?: string }>;
-  applySuggestions: (path: string, suggestions: SortSuggestions) => Promise<{ success?: boolean, error?: string }>;
-  applyRenames: (path: string, suggestions: RenameSuggestions) => Promise<{ success?: boolean, error?: string }>;
+  applySuggestions: (path: string, suggestions: SortSuggestions) => Promise<SortApplyResult>;
+  applyRenames: (path: string, suggestions: RenameSuggestions) => Promise<RenameApplyResult>;
   openFile: (path: string) => Promise<{ success?: boolean, error?: string }>;
   
   // Database optimization operations
