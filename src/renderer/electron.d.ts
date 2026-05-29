@@ -70,6 +70,8 @@ export interface UpdateInfo {
   downloadUrl: string;
   assetName?: string;
   assetSize?: number;
+  checksumUrl?: string;
+  checksumAssetName?: string;
 }
 
 export interface UpdateDownloadProgress {

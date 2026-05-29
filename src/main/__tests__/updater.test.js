@@ -24,6 +24,42 @@ jest.mock('axios', () => {
 const axios = require('axios');
 const updater = require('../updater');
 
+const ZIP_SHA256 = '2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824';
+const UPDATE_URL = 'https://github.com/oshtz/keepdir/releases/download/v2.0.0/keepdir-portable-windows.zip';
+const CHECKSUM_URL = 'https://github.com/oshtz/keepdir/releases/download/v2.0.0/keepdir-portable-windows.zip.sha256';
+
+function createRelease(assetOverrides = {}, checksumOverrides = {}) {
+  return {
+    tag_name: 'v2.0.0',
+    assets: [
+      {
+        name: 'keepdir-portable-windows.zip',
+        browser_download_url: UPDATE_URL,
+        size: 5,
+        ...assetOverrides
+      },
+      {
+        name: 'keepdir-portable-windows.zip.sha256',
+        browser_download_url: CHECKSUM_URL,
+        size: 99,
+        ...checksumOverrides
+      }
+    ]
+  };
+}
+
+function mockReleaseAndChecksum(release = createRelease(), checksumText = `${ZIP_SHA256}  keepdir-portable-windows.zip`) {
+  axios.get.mockImplementation((url) => {
+    if (String(url).includes('/repos/oshtz/keepdir/releases/latest')) {
+      return Promise.resolve({ data: release });
+    }
+    if (String(url).endsWith('.sha256')) {
+      return Promise.resolve({ data: checksumText });
+    }
+    return Promise.reject(new Error(`Unexpected GET ${url}`));
+  });
+}
+
 describe('updater trust boundary', () => {
   let baseDir;
   let originalPlatform;
@@ -55,16 +91,13 @@ describe('updater trust boundary', () => {
   });
 
   it('does not trust release assets outside the configured GitHub repository', async () => {
-    axios.get.mockResolvedValue({
-      data: {
-        tag_name: 'v2.0.0',
-        assets: [{
-          name: 'keepdir-portable-windows.zip',
-          browser_download_url: 'https://example.com/keepdir-portable-windows.zip',
-          size: 5
-        }]
+    mockReleaseAndChecksum(createRelease(
+      {
+        name: 'keepdir-portable-windows.zip',
+        browser_download_url: 'https://example.com/keepdir-portable-windows.zip',
+        size: 5
       }
-    });
+    ));
 
     const checkResult = await updater.checkForUpdate();
     expect(checkResult).toEqual({ error: 'Release asset URL is not trusted.' });
@@ -74,23 +107,34 @@ describe('updater trust boundary', () => {
     expect(axios).not.toHaveBeenCalled();
   });
 
-  it('downloads only the update returned by the trusted update check', async () => {
-    const updateInfo = {
-      tag_name: 'v2.0.0',
-      assets: [{
-        name: 'keepdir-portable-windows.zip',
-        browser_download_url: 'https://github.com/oshtz/keepdir/releases/download/v2.0.0/keepdir-portable-windows.zip',
-        size: 5
-      }]
-    };
+  it('requires a checksum asset for compatible releases', async () => {
+    axios.get.mockResolvedValue({
+      data: {
+        tag_name: 'v2.0.0',
+        assets: [{
+          name: 'keepdir-portable-windows.zip',
+          browser_download_url: UPDATE_URL,
+          size: 5
+        }]
+      }
+    });
 
-    axios.get.mockResolvedValue({ data: updateInfo });
+    const checkResult = await updater.checkForUpdate();
+    expect(checkResult).toEqual({
+      error: 'No SHA-256 checksum asset found for keepdir-portable-windows.zip.'
+    });
+  });
+
+  it('downloads only the update returned by the trusted update check', async () => {
+    mockReleaseAndChecksum();
     const checkResult = await updater.checkForUpdate();
 
     expect(checkResult.updateInfo).toMatchObject({
       version: '2.0.0',
       assetName: 'keepdir-portable-windows.zip',
-      assetSize: 5
+      assetSize: 5,
+      checksumAssetName: 'keepdir-portable-windows.zip.sha256',
+      checksumUrl: CHECKSUM_URL
     });
 
     const mismatchResult = await updater.downloadUpdate({
@@ -113,18 +157,25 @@ describe('updater trust boundary', () => {
     expect(await fsp.readFile(downloadResult.updatePath, 'utf8')).toBe('hello');
   });
 
-  it('rejects install paths that do not match the downloaded trusted update', async () => {
-    axios.get.mockResolvedValue({
-      data: {
-        tag_name: 'v2.0.0',
-        assets: [{
-          name: 'keepdir-portable-windows.zip',
-          browser_download_url: 'https://github.com/oshtz/keepdir/releases/download/v2.0.0/keepdir-portable-windows.zip',
-          size: 5
-        }]
-      }
+  it('rejects downloaded updates when the checksum does not match', async () => {
+    mockReleaseAndChecksum(createRelease(), `${'0'.repeat(64)}  keepdir-portable-windows.zip`);
+    const checkResult = await updater.checkForUpdate();
+    axios.mockResolvedValue({
+      headers: {
+        'content-length': '5'
+      },
+      data: Readable.from([Buffer.from('hello')])
     });
 
+    const result = await updater.downloadUpdate(checkResult.updateInfo);
+    const updatePath = path.join(baseDir, 'updates', 'keepdir-portable-windows.zip');
+
+    expect(result.error).toContain('checksum did not match');
+    expect(fs.existsSync(updatePath)).toBe(false);
+  });
+
+  it('rejects install paths that do not match the downloaded trusted update', async () => {
+    mockReleaseAndChecksum();
     const checkResult = await updater.checkForUpdate();
     axios.mockResolvedValue({
       headers: {
@@ -139,5 +190,13 @@ describe('updater trust boundary', () => {
 
     const result = await updater.installUpdate(wrongPath);
     expect(result).toEqual({ error: 'Update file does not match the trusted download.' });
+  });
+
+  it('parses both raw and sha256sum-style checksum files', () => {
+    expect(updater.parseChecksumText(ZIP_SHA256, 'keepdir-portable-windows.zip')).toBe(ZIP_SHA256);
+    expect(updater.parseChecksumText(
+      `${'0'.repeat(64)}  other.zip\n${ZIP_SHA256} *keepdir-portable-windows.zip`,
+      'keepdir-portable-windows.zip'
+    )).toBe(ZIP_SHA256);
   });
 });

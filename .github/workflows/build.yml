@@ -56,11 +56,17 @@ jobs:
           $size = [math]::Round((Get-Item $zipPath).Length / 1MB, 2)
           Write-Host "Portable zip created: $size MB"
 
+          $hash = (Get-FileHash -Path $zipPath -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  keepdir-portable-windows.zip" | Set-Content -Path "$zipPath.sha256" -Encoding ascii
+          Write-Host "Portable zip checksum created"
+
       - name: Upload portable zip
         uses: actions/upload-artifact@v4
         with:
           name: keepdir-portable-windows
-          path: keepdir-portable-windows.zip
+          path: |
+            keepdir-portable-windows.zip
+            keepdir-portable-windows.zip.sha256
 
       - name: Determine release tag
         id: release_tag
@@ -98,14 +104,18 @@ jobs:
           name: Release ${{ steps.release_tag.outputs.tag }}
           target_commitish: ${{ github.sha }}
           generate_release_notes: true
-          files: keepdir-portable-windows.zip
+          files: |
+            keepdir-portable-windows.zip
+            keepdir-portable-windows.zip.sha256
 
       - name: Upload to existing release
         if: github.ref == 'refs/heads/main' && steps.release_check.outputs.exists == 'true'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.release_tag.outputs.tag }}
-          files: keepdir-portable-windows.zip
+          files: |
+            keepdir-portable-windows.zip
+            keepdir-portable-windows.zip.sha256
 
   build-macos:
     runs-on: macos-latest
@@ -203,6 +213,13 @@ jobs:
 
           echo "Notarization completed"
 
+      - name: Generate macOS checksums
+        run: |
+          find out/make -type f \( -name "*.zip" -o -name "*.dmg" \) -print0 | while IFS= read -r -d '' file; do
+            shasum -a 256 "$file" > "$file.sha256"
+            echo "Created checksum for $file"
+          done
+
       - name: Upload macOS artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -210,6 +227,7 @@ jobs:
           path: |
             out/make/**/*.zip
             out/make/**/*.dmg
+            out/make/**/*.sha256
 
       - name: Determine release tag
         id: release_tag
@@ -252,6 +270,7 @@ jobs:
           files: |
             out/make/**/*.zip
             out/make/**/*.dmg
+            out/make/**/*.sha256
 
       - name: Upload to existing release
         if: github.ref == 'refs/heads/main' && steps.release_check.outputs.exists == 'true'
@@ -261,6 +280,7 @@ jobs:
           files: |
             out/make/**/*.zip
             out/make/**/*.dmg
+            out/make/**/*.sha256
 
       - name: Cleanup keychain
         if: always()

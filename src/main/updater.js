@@ -1,5 +1,6 @@
 const { app } = require('electron');
 const axios = require('axios');
+const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
@@ -61,6 +62,64 @@ function isTrustedDownloadUrl(downloadUrl) {
   }
 }
 
+function isValidSha256(value) {
+  return typeof value === 'string' && /^[a-f0-9]{64}$/i.test(value.trim());
+}
+
+function findChecksumAsset(assets, updateAsset) {
+  const expectedNames = [
+    `${updateAsset.name}.sha256`,
+    `${updateAsset.name}.sha256sum`,
+    'SHA256SUMS',
+    'checksums.txt'
+  ].map(name => name.toLowerCase());
+
+  return assets.find(asset => expectedNames.includes((asset.name || '').toLowerCase())) || null;
+}
+
+function parseChecksumText(text, assetName) {
+  const trimmed = String(text || '').trim();
+  if (isValidSha256(trimmed)) {
+    return trimmed.toLowerCase();
+  }
+
+  const normalizedAssetName = path.basename(assetName || '').toLowerCase();
+  const lines = trimmed.split(/\r?\n/);
+
+  for (const line of lines) {
+    const match = line.trim().match(/^([a-f0-9]{64})\s+\*?(.+)$/i);
+    if (!match) {
+      continue;
+    }
+
+    const candidateName = path.basename(match[2].trim()).toLowerCase();
+    if (candidateName === normalizedAssetName) {
+      return match[1].toLowerCase();
+    }
+  }
+
+  throw new Error(`Checksum file does not contain a SHA-256 digest for ${assetName}.`);
+}
+
+async function fetchExpectedSha256(updateInfo) {
+  if (updateInfo.sha256) {
+    return updateInfo.sha256;
+  }
+
+  if (!updateInfo.checksumUrl || !isTrustedDownloadUrl(updateInfo.checksumUrl)) {
+    throw new Error('Release checksum URL is not trusted.');
+  }
+
+  const response = await axios.get(updateInfo.checksumUrl, {
+    responseType: 'text',
+    timeout: 30000,
+    headers: {
+      'User-Agent': `keepdir/${app.getVersion()}`
+    }
+  });
+  return parseChecksumText(response.data, updateInfo.assetName);
+}
+
 function assertMatchesLastUpdate(updateInfo) {
   if (!lastUpdateInfo) {
     throw new Error('Check for updates before downloading.');
@@ -70,7 +129,7 @@ function assertMatchesLastUpdate(updateInfo) {
     return lastUpdateInfo;
   }
 
-  for (const key of ['version', 'downloadUrl', 'assetName']) {
+  for (const key of ['version', 'downloadUrl', 'assetName', 'checksumUrl']) {
     if (updateInfo[key] && updateInfo[key] !== lastUpdateInfo[key]) {
       throw new Error('Update details do not match the latest trusted update check.');
     }
@@ -172,17 +231,27 @@ async function checkForUpdate(mainWindow) {
       return { error: 'No compatible update asset found for this platform.' };
     }
 
+    const checksumAsset = findChecksumAsset(assets, asset);
+    if (!checksumAsset) {
+      return { error: `No SHA-256 checksum asset found for ${asset.name}.` };
+    }
+
     const updateInfo = {
       version: latestVersion,
       notes: release.body || null,
       publishedAt: release.published_at || null,
       downloadUrl: asset.browser_download_url,
       assetName: asset.name,
-      assetSize: asset.size
+      assetSize: asset.size,
+      checksumUrl: checksumAsset.browser_download_url,
+      checksumAssetName: checksumAsset.name
     };
 
     if (!isTrustedDownloadUrl(updateInfo.downloadUrl)) {
       return { error: 'Release asset URL is not trusted.' };
+    }
+    if (!isTrustedDownloadUrl(updateInfo.checksumUrl)) {
+      return { error: 'Release checksum URL is not trusted.' };
     }
 
     lastUpdateInfo = updateInfo;
@@ -229,6 +298,7 @@ async function downloadUpdate(updateInfo, mainWindow) {
     // Determine filename
     const updatePath = getSafeUpdatePath(trustedUpdateInfo.assetName, trustedUpdateInfo.version);
     downloadedUpdatePath = null;
+    const expectedSha256 = await fetchExpectedSha256(trustedUpdateInfo);
 
     // Download with progress reporting
     const response = await axios({
@@ -243,11 +313,13 @@ async function downloadUpdate(updateInfo, mainWindow) {
 
     const totalLength = parseInt(response.headers['content-length'], 10) || trustedUpdateInfo.assetSize || 0;
     let downloaded = 0;
+    const hash = crypto.createHash('sha256');
 
     const writer = fs.createWriteStream(updatePath);
 
     response.data.on('data', (chunk) => {
       downloaded += chunk.length;
+      hash.update(chunk);
       const percent = totalLength > 0 ? Math.round((downloaded / totalLength) * 100) : 0;
 
       // Send progress to renderer
@@ -261,28 +333,31 @@ async function downloadUpdate(updateInfo, mainWindow) {
     });
 
     await new Promise((resolve, reject) => {
-      writer.on('finish', () => {
-        if (trustedUpdateInfo.assetSize && downloaded !== trustedUpdateInfo.assetSize) {
-          try {
-            fs.unlinkSync(updatePath);
-          } catch (e) {
-            // Ignore cleanup errors
-          }
-          reject(new Error('Downloaded update size did not match the release asset size.'));
-          return;
-        }
-        resolve();
-      });
-
-      writer.on('error', (err) => {
-        // Clean up partial download
+      const rejectAndCleanup = (err) => {
         try {
           fs.unlinkSync(updatePath);
         } catch (e) {
           // Ignore cleanup errors
         }
         reject(err);
+      };
+
+      writer.on('finish', () => {
+        if (trustedUpdateInfo.assetSize && downloaded !== trustedUpdateInfo.assetSize) {
+          rejectAndCleanup(new Error('Downloaded update size did not match the release asset size.'));
+          return;
+        }
+
+        const actualSha256 = hash.digest('hex');
+        if (actualSha256 !== expectedSha256) {
+          rejectAndCleanup(new Error('Downloaded update checksum did not match the release checksum.'));
+          return;
+        }
+        resolve();
       });
+
+      writer.on('error', rejectAndCleanup);
+      response.data.on('error', rejectAndCleanup);
 
       response.data.pipe(writer);
     });
@@ -465,5 +540,6 @@ module.exports = {
   installUpdate,
   cleanupUpdates,
   compareVersions,
-  normalizeVersion
+  normalizeVersion,
+  parseChecksumText
 };
