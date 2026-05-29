@@ -6,6 +6,7 @@ const {
   normalizeImportOptions,
   readJsonImportFile,
   validateAllDataImport,
+  validateCustomSections,
   validateWorkspaceImportData
 } = require('../importValidation');
 
@@ -54,7 +55,14 @@ describe('main import validation', () => {
       settings: {
         recentFolders: ['C:/Users/Ada'],
         nested: { enabled: true }
-      }
+      },
+      customSections: [{
+        id: 'custom-1',
+        name: 'Projects',
+        icon: 'P',
+        color: '#123456',
+        items: [{ id: 'item-1', name: 'Docs', path: 'C:/Docs', ignored: true }]
+      }]
     });
 
     expect(validated.workspace).toMatchObject({
@@ -63,6 +71,13 @@ describe('main import validation', () => {
       emoji: 'K'
     });
     expect(validated.settings.recentFolders).toEqual(['C:/Users/Ada']);
+    expect(validated.customSections).toEqual([{
+      id: 'custom-1',
+      name: 'Projects',
+      icon: 'P',
+      color: '#123456',
+      items: [{ id: 'item-1', name: 'Docs', path: 'C:/Docs' }]
+    }]);
 
     expect(() => validateWorkspaceImportData({ version: '1.0', workspace: { id: '', name: 'x' } }))
       .toThrow('Workspace id is required');
@@ -84,12 +99,18 @@ describe('main import validation', () => {
         },
         settings: {
           recentFolders: []
-        }
+        },
+        customSections: [{
+          id: 'custom-1',
+          name: 'Projects',
+          items: [{ name: 'Docs' }]
+        }]
       }]
     });
 
     expect(validated.workspaces).toHaveLength(1);
     expect(validated.settings.selectedProvider).toBe('openai');
+    expect(validated.workspaces[0].customSections).toHaveLength(1);
 
     expect(() => validateAllDataImport({
       version: '1.0',
@@ -128,5 +149,20 @@ describe('main import validation', () => {
     });
 
     expect(() => normalizeImportOptions('invalid')).toThrow('Import options must be an object');
+  });
+
+  it('validates custom section records in imports', () => {
+    expect(validateCustomSections([{
+      name: 'Projects',
+      items: [{ path: 'C:/Projects' }]
+    }])).toEqual([{
+      name: 'Projects',
+      items: [{ path: 'C:/Projects' }]
+    }]);
+
+    expect(() => validateCustomSections([{ name: '', items: [] }]))
+      .toThrow('name is required');
+    expect(() => validateCustomSections([{ name: 'Projects', items: [{ id: 'only-id' }] }]))
+      .toThrow('requires a name or path');
   });
 });

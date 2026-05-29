@@ -34,6 +34,17 @@ function parseJsonArrayValue(value) {
   return Array.isArray(parsed) ? parsed : [];
 }
 
+function parseCustomSectionsRows(rows = []) {
+  return rows.map(row => ({
+    ...row,
+    items: parseJsonArrayValue(row.items || '[]')
+  }));
+}
+
+function createCustomSectionId() {
+  return `custom-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+}
+
 class Database {
   constructor() {
     // Create db in user's app data directory
@@ -1167,19 +1178,27 @@ class Database {
             return;
           }
 
-          const settingsObj = parseSettingsRows(settings);
+          this.db.all('SELECT * FROM custom_sections WHERE workspace_id = ? ORDER BY created_at ASC', [workspaceId], (err, customSections) => {
+            if (err) {
+              reject(err);
+              return;
+            }
 
-          resolve({
-            workspace: {
-              id: workspace.id,
-              name: workspace.name,
-              emoji: workspace.emoji,
-              created_at: workspace.created_at,
-              updated_at: workspace.updated_at
-            },
-            settings: settingsObj,
-            exportedAt: new Date().toISOString(),
-            version: '1.0'
+            const settingsObj = parseSettingsRows(settings);
+
+            resolve({
+              workspace: {
+                id: workspace.id,
+                name: workspace.name,
+                emoji: workspace.emoji,
+                created_at: workspace.created_at,
+                updated_at: workspace.updated_at
+              },
+              settings: settingsObj,
+              customSections: parseCustomSectionsRows(customSections),
+              exportedAt: new Date().toISOString(),
+              version: '1.0'
+            });
           });
         });
       });
@@ -1221,6 +1240,7 @@ class Database {
 
       if (overwriteExisting && existing) {
         await this._run('DELETE FROM workspace_settings WHERE workspace_id = ?', [workspaceId]);
+        await this._run('DELETE FROM custom_sections WHERE workspace_id = ?', [workspaceId]);
       }
 
       for (const [key, value] of Object.entries(workspaceData.settings || {})) {
@@ -1234,12 +1254,36 @@ class Database {
         );
       }
 
+      for (const section of workspaceData.customSections || []) {
+        let sectionId = section.id || createCustomSectionId();
+        const existingSection = await this._get('SELECT id FROM custom_sections WHERE id = ?', [sectionId]);
+        if (generateNewId || existingSection) {
+          sectionId = createCustomSectionId();
+        }
+
+        await this._run(
+          `INSERT INTO custom_sections (id, workspace_id, name, icon, color, items, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP), COALESCE(?, CURRENT_TIMESTAMP))`,
+          [
+            sectionId,
+            workspaceId,
+            section.name,
+            section.icon || null,
+            section.color || null,
+            JSON.stringify(section.items || []),
+            section.created_at || null,
+            section.updated_at || null
+          ]
+        );
+      }
+
       return {
         success: true,
         workspaceId,
         imported: {
           workspace: workspaceData.workspace.name,
-          settings: Object.keys(workspaceData.settings || {}).length
+          settings: Object.keys(workspaceData.settings || {}).length,
+          customSections: (workspaceData.customSections || []).length
         }
       };
     });
@@ -1271,31 +1315,47 @@ class Database {
             return;
           }
 
-          // Group settings by workspace
-          const settingsByWorkspace = {};
-          workspaceSettings.forEach(setting => {
-            if (!settingsByWorkspace[setting.workspace_id]) {
-              settingsByWorkspace[setting.workspace_id] = {};
-            }
-            settingsByWorkspace[setting.workspace_id][setting.key] = parseJsonValue(setting.value);
-          });
-
-          // Combine workspaces with their settings
-          exportData.workspaces = workspaces.map(workspace => ({
-            workspace: workspace,
-            settings: settingsByWorkspace[workspace.id] || {}
-          }));
-
-          // Get global settings
-          this.db.all('SELECT key, value FROM settings', (err, settings) => {
+          this.db.all('SELECT * FROM custom_sections ORDER BY created_at ASC', (err, customSections) => {
             if (err) {
               reject(err);
               return;
             }
 
-            exportData.settings = parseSettingsRows(settings);
+            // Group settings by workspace
+            const settingsByWorkspace = {};
+            workspaceSettings.forEach(setting => {
+              if (!settingsByWorkspace[setting.workspace_id]) {
+                settingsByWorkspace[setting.workspace_id] = {};
+              }
+              settingsByWorkspace[setting.workspace_id][setting.key] = parseJsonValue(setting.value);
+            });
 
-            resolve(exportData);
+            const sectionsByWorkspace = {};
+            parseCustomSectionsRows(customSections).forEach(section => {
+              if (!sectionsByWorkspace[section.workspace_id]) {
+                sectionsByWorkspace[section.workspace_id] = [];
+              }
+              sectionsByWorkspace[section.workspace_id].push(section);
+            });
+
+            // Combine workspaces with their settings and custom sections
+            exportData.workspaces = workspaces.map(workspace => ({
+              workspace: workspace,
+              settings: settingsByWorkspace[workspace.id] || {},
+              customSections: sectionsByWorkspace[workspace.id] || []
+            }));
+
+            // Get global settings
+            this.db.all('SELECT key, value FROM settings', (err, settings) => {
+              if (err) {
+                reject(err);
+                return;
+              }
+
+              exportData.settings = parseSettingsRows(settings);
+
+              resolve(exportData);
+            });
           });
         });
       });
@@ -1312,7 +1372,8 @@ class Database {
       success: true,
       imported: {
         workspaces: 0,
-        settings: 0
+        settings: 0,
+        customSections: 0
       },
       errors: []
     };
@@ -1352,6 +1413,7 @@ class Database {
               [workspace.name, workspace.emoji, workspace.id]
             );
             await this._run('DELETE FROM workspace_settings WHERE workspace_id = ?', [workspace.id]);
+            await this._run('DELETE FROM custom_sections WHERE workspace_id = ?', [workspace.id]);
           } else {
             await this._run(
               `INSERT INTO workspaces (id, name, emoji, created_at, updated_at)
@@ -1366,6 +1428,30 @@ class Database {
                VALUES (?, ?, ?, CURRENT_TIMESTAMP)`,
               [workspace.id, key, this._serializeValue(value)]
             );
+          }
+
+          for (const section of workspaceData.customSections || []) {
+            let sectionId = section.id || createCustomSectionId();
+            const existingSection = await this._get('SELECT id FROM custom_sections WHERE id = ?', [sectionId]);
+            if (existingSection) {
+              sectionId = createCustomSectionId();
+            }
+
+            await this._run(
+              `INSERT INTO custom_sections (id, workspace_id, name, icon, color, items, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP), COALESCE(?, CURRENT_TIMESTAMP))`,
+              [
+                sectionId,
+                workspace.id,
+                section.name,
+                section.icon || null,
+                section.color || null,
+                JSON.stringify(section.items || []),
+                section.created_at || null,
+                section.updated_at || null
+              ]
+            );
+            results.imported.customSections++;
           }
 
           results.imported.workspaces++;
@@ -1393,10 +1479,7 @@ class Database {
             return;
           }
 
-          const sections = rows.map(row => ({
-            ...row,
-            items: parseJsonArrayValue(row.items || '[]')
-          }));
+          const sections = parseCustomSectionsRows(rows);
           resolve(sections);
         }
       );
@@ -1592,6 +1675,7 @@ class Database {
 }
 
 module.exports = Database;
+module.exports.parseCustomSectionsRows = parseCustomSectionsRows;
 module.exports.parseJsonArrayValue = parseJsonArrayValue;
 module.exports.parseJsonValue = parseJsonValue;
 module.exports.parseSettingsRows = parseSettingsRows;

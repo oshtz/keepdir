@@ -1,4 +1,5 @@
 const {
+  parseCustomSectionsRows,
   parseJsonArrayValue,
   parseJsonValue,
   parseSettingsRows
@@ -26,5 +27,35 @@ describe('database JSON parsing helpers', () => {
     expect(parseJsonArrayValue('[{"name":"Docs"}]')).toEqual([{ name: 'Docs' }]);
     expect(parseJsonArrayValue('{"not":"an-array"}')).toEqual([]);
     expect(parseJsonArrayValue('bad-json')).toEqual([]);
+  });
+
+  it('parses custom-section rows with safe item fallbacks', () => {
+    expect(parseCustomSectionsRows([
+      {
+        id: 'custom-1',
+        workspace_id: 'workspace-1',
+        name: 'Projects',
+        items: '[{"name":"Docs"}]'
+      },
+      {
+        id: 'custom-2',
+        workspace_id: 'workspace-1',
+        name: 'Broken',
+        items: 'not-json'
+      }
+    ])).toEqual([
+      {
+        id: 'custom-1',
+        workspace_id: 'workspace-1',
+        name: 'Projects',
+        items: [{ name: 'Docs' }]
+      },
+      {
+        id: 'custom-2',
+        workspace_id: 'workspace-1',
+        name: 'Broken',
+        items: []
+      }
+    ]);
   });
 });

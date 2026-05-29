@@ -4,6 +4,8 @@ const { requireExistingPath } = require('./ipcValidation');
 const DEFAULT_MAX_IMPORT_BYTES = 50 * 1024 * 1024;
 const MAX_WORKSPACES = 500;
 const MAX_SETTINGS_ENTRIES = 500;
+const MAX_CUSTOM_SECTIONS = 200;
+const MAX_CUSTOM_SECTION_ITEMS = 500;
 const MAX_STRING_LENGTH = 1024 * 1024;
 const MAX_JSON_DEPTH = 12;
 const MAX_JSON_NODES = 50000;
@@ -126,6 +128,83 @@ function validateWorkspaceRecord(workspace, label = 'Workspace') {
   };
 }
 
+function validateCustomSectionItem(item, label = 'Custom section item') {
+  const itemObject = requirePlainObject(item, label);
+  const normalized = {};
+
+  if (itemObject.id != null) {
+    normalized.id = requireBoundedString(itemObject.id, `${label} id`, 256);
+  }
+  if (itemObject.name != null) {
+    normalized.name = requireBoundedString(itemObject.name, `${label} name`, 200);
+  }
+  if (itemObject.path != null) {
+    normalized.path = requireBoundedString(itemObject.path, `${label} path`, 32767);
+  }
+  if (itemObject.type != null) {
+    normalized.type = requireBoundedString(itemObject.type, `${label} type`, 64);
+  }
+
+  if (!normalized.name && !normalized.path) {
+    throw new Error(`${label} requires a name or path.`);
+  }
+
+  return normalized;
+}
+
+function validateCustomSectionItems(items = [], label = 'Custom section items') {
+  if (!Array.isArray(items)) {
+    throw new Error(`${label} must be an array.`);
+  }
+
+  if (items.length > MAX_CUSTOM_SECTION_ITEMS) {
+    throw new Error(`${label} cannot contain more than ${MAX_CUSTOM_SECTION_ITEMS} items.`);
+  }
+
+  return items.map((item, index) => validateCustomSectionItem(item, `${label} ${index + 1}`));
+}
+
+function validateCustomSections(customSections = [], label = 'Custom sections') {
+  if (!Array.isArray(customSections)) {
+    throw new Error(`${label} must be an array.`);
+  }
+
+  if (customSections.length > MAX_CUSTOM_SECTIONS) {
+    throw new Error(`${label} cannot contain more than ${MAX_CUSTOM_SECTIONS} sections.`);
+  }
+
+  return customSections.map((section, index) => {
+    const sectionObject = requirePlainObject(section, `${label} ${index + 1}`);
+    const normalized = {
+      id: sectionObject.id == null
+        ? undefined
+        : requireBoundedString(sectionObject.id, `${label} ${index + 1} id`, 256),
+      name: requireBoundedString(sectionObject.name, `${label} ${index + 1} name`, 100),
+      icon: typeof sectionObject.icon === 'string' && sectionObject.icon.length <= 32
+        ? sectionObject.icon
+        : undefined,
+      color: typeof sectionObject.color === 'string' && /^#[0-9A-Fa-f]{3,8}$/.test(sectionObject.color)
+        ? sectionObject.color
+        : undefined,
+      items: validateCustomSectionItems(sectionObject.items || [], `${label} ${index + 1} items`),
+      created_at: typeof sectionObject.created_at === 'string' && sectionObject.created_at.length <= 64
+        ? sectionObject.created_at
+        : undefined,
+      updated_at: typeof sectionObject.updated_at === 'string' && sectionObject.updated_at.length <= 64
+        ? sectionObject.updated_at
+        : undefined
+    };
+
+    Object.keys(normalized).forEach((key) => {
+      if (normalized[key] === undefined) {
+        delete normalized[key];
+      }
+    });
+
+    return normalized;
+  });
+}
+
 function validateVersion(value, label = 'Import version') {
   return requireBoundedString(value, label, 20);
 }
@@ -138,7 +217,8 @@ function validateWorkspaceImportData(data) {
       ? importData.exportedAt
       : undefined,
     workspace: validateWorkspaceRecord(importData.workspace),
-    settings: validateSettingsObject(importData.settings, 'Workspace settings')
+    settings: validateSettingsObject(importData.settings, 'Workspace settings'),
+    customSections: validateCustomSections(importData.customSections || [])
   };
 }
 
@@ -162,7 +242,11 @@ function validateAllDataImport(data) {
       const entry = requirePlainObject(workspaceData, `Workspace entry ${index + 1}`);
       return {
         workspace: validateWorkspaceRecord(entry.workspace, `Workspace entry ${index + 1}`),
-        settings: validateSettingsObject(entry.settings, `Workspace entry ${index + 1} settings`)
+        settings: validateSettingsObject(entry.settings, `Workspace entry ${index + 1} settings`),
+        customSections: validateCustomSections(
+          entry.customSections || [],
+          `Workspace entry ${index + 1} custom sections`
+        )
       };
     })
   };
@@ -207,5 +291,6 @@ module.exports = {
   normalizeImportOptions,
   readJsonImportFile,
   validateAllDataImport,
+  validateCustomSections,
   validateWorkspaceImportData
 };
