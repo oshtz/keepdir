@@ -119,6 +119,7 @@ const BatchProgressDialog: React.FC<BatchProgressDialogProps> = ({
       maxWidth="sm"
       fullWidth
       PaperProps={{
+        tabIndex: -1,
         sx: {
           borderRadius: 2,
         },

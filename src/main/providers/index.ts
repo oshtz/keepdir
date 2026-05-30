@@ -16,11 +16,14 @@ const providers: { [key: string]: Provider } = {
 };
 
 export function getProvider(name: string): Provider | undefined {
+  if (!Object.prototype.hasOwnProperty.call(providers, name)) {
+    return undefined;
+  }
   return providers[name];
 }
 
 export function getAllProviders(): { [key: string]: Provider } {
-  return providers;
+  return { ...providers };
 }
 
 export type { Provider, Message, ProviderConfig };

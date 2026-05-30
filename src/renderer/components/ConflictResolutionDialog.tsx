@@ -162,6 +162,7 @@ const ConflictResolutionDialog: React.FC<ConflictResolutionDialogProps> = ({
       maxWidth="md"
       fullWidth
       PaperProps={{
+        tabIndex: -1,
         sx: {
           borderRadius: 1.5,
           overflow: 'hidden'

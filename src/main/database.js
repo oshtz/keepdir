@@ -3,6 +3,60 @@ const path = require('path');
 const crypto = require('crypto');
 const fs = require('fs');
 
+const debugLog = (...args) => {
+  if (process.env.KEEPDIR_DEBUG === '1') {
+    console.debug(...args);
+  }
+};
+
+function parseJsonValue(value, fallback = value) {
+  if (typeof value !== 'string') {
+    return value;
+  }
+
+  try {
+    return JSON.parse(value);
+  } catch {
+    return fallback;
+  }
+}
+
+function isSafeSettingKey(key) {
+  return typeof key === 'string' && /^[A-Za-z][A-Za-z0-9_-]{0,127}$/.test(key);
+}
+
+function parseSettingsRows(rows = []) {
+  const settings = {};
+  rows.forEach((row) => {
+    if (!isSafeSettingKey(row.key)) {
+      return;
+    }
+    Object.defineProperty(settings, row.key, {
+      value: parseJsonValue(row.value),
+      enumerable: true,
+      configurable: true,
+      writable: true
+    });
+  });
+  return settings;
+}
+
+function parseJsonArrayValue(value) {
+  const parsed = parseJsonValue(value, []);
+  return Array.isArray(parsed) ? parsed : [];
+}
+
+function parseCustomSectionsRows(rows = []) {
+  return rows.map(row => ({
+    ...row,
+    items: parseJsonArrayValue(row.items || '[]')
+  }));
+}
+
+function createCustomSectionId() {
+  return `custom-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+}
+
 class Database {
   constructor() {
     // Create db in user's app data directory
@@ -13,6 +67,7 @@ class Database {
 
     this.db = new sqlite3.Database(dbPath);
     this.maintenanceInterval = null;
+    this.transactionQueue = Promise.resolve();
 
     // Enable WAL mode for better performance and concurrent access
     this.db.run('PRAGMA journal_mode = WAL');
@@ -141,6 +196,67 @@ class Database {
     });
   }
 
+  _run(sql, params = []) {
+    return new Promise((resolve, reject) => {
+      this.db.run(sql, params, function onRun(err) {
+        if (err) {
+          reject(err);
+          return;
+        }
+        resolve(this);
+      });
+    });
+  }
+
+  _get(sql, params = []) {
+    return new Promise((resolve, reject) => {
+      this.db.get(sql, params, (err, row) => {
+        if (err) {
+          reject(err);
+          return;
+        }
+        resolve(row || null);
+      });
+    });
+  }
+
+  _all(sql, params = []) {
+    return new Promise((resolve, reject) => {
+      this.db.all(sql, params, (err, rows) => {
+        if (err) {
+          reject(err);
+          return;
+        }
+        resolve(rows || []);
+      });
+    });
+  }
+
+  _serializeValue(value) {
+    if (value === undefined) {
+      return '';
+    }
+    return typeof value === 'object' ? JSON.stringify(value) : value;
+  }
+
+  _withTransaction(callback) {
+    const runTransaction = async () => {
+      await this._run('BEGIN TRANSACTION');
+      try {
+        const result = await callback();
+        await this._run('COMMIT');
+        return result;
+      } catch (error) {
+        await this._run('ROLLBACK').catch(() => {});
+        throw error;
+      }
+    };
+
+    const pending = this.transactionQueue.then(runTransaction, runTransaction);
+    this.transactionQueue = pending.catch(() => {});
+    return pending;
+  }
+
   /**
    * Start automatic database maintenance
    */
@@ -148,7 +264,7 @@ class Database {
     // Run maintenance every 6 hours
     this.maintenanceInterval = setInterval(async () => {
       try {
-        console.log('Running database maintenance...');
+        debugLog('Running database maintenance...');
         await this.cleanupCache(168); // Clean cache older than 7 days
 
         // Run full optimization once per day (check if it's been 24 hours)
@@ -157,12 +273,12 @@ class Database {
         const oneDayMs = 24 * 60 * 60 * 1000;
 
         if (!lastOptimization || (now - parseInt(lastOptimization)) > oneDayMs) {
-          console.log('Running database optimization...');
+          debugLog('Running database optimization...');
           await this.optimizeDatabase();
           await this.saveSetting('lastOptimization', now.toString());
         }
 
-        console.log('Database maintenance completed');
+        debugLog('Database maintenance completed');
       } catch (error) {
         console.error('Database maintenance failed:', error);
       }
@@ -202,7 +318,7 @@ class Database {
         .toString()
         .normalize('NFC');
 
-      console.log('Normalized path:', {
+      debugLog('Normalized path:', {
         original: filePath,
         normalized: normalized,
         hex: Buffer.from(normalized).toString('hex')
@@ -227,7 +343,7 @@ class Database {
         .toString()
         .normalize('NFC');
 
-      console.log('Normalized filename:', {
+      debugLog('Normalized filename:', {
         original: filename,
         withoutPrefix: withoutPrefix,
         normalized: normalized,
@@ -261,7 +377,10 @@ class Database {
         'SELECT * FROM files_cache WHERE file_path = ? AND file_hash = ?',
         [normalizedPath, fileHash],
         (err, row) => {
-          if (err) reject(err);
+          if (err) {
+            reject(err);
+            return;
+          }
           resolve(!!row);
         }
       );
@@ -278,7 +397,10 @@ class Database {
         'SELECT content FROM files_cache WHERE file_path = ?',
         [normalizedPath],
         (err, row) => {
-          if (err) reject(err);
+          if (err) {
+            reject(err);
+            return;
+          }
           resolve(row ? row.content : null);
         }
       );
@@ -300,7 +422,10 @@ class Database {
            updated_at = CURRENT_TIMESTAMP`,
         [normalizedPath, fileHash, content],
         (err) => {
-          if (err) reject(err);
+          if (err) {
+            reject(err);
+            return;
+          }
           resolve();
         }
       );
@@ -346,7 +471,10 @@ class Database {
            MAX(updated_at) as newest_entry
          FROM files_cache`,
         (err, row) => {
-          if (err) reject(err);
+          if (err) {
+            reject(err);
+            return;
+          }
           resolve({
             totalEntries: row.total_entries || 0,
             totalSizeBytes: row.total_size_bytes || 0,
@@ -398,7 +526,10 @@ class Database {
            freelist_count
          FROM pragma_page_count(), pragma_page_size(), pragma_freelist_count()`,
         (err, row) => {
-          if (err) reject(err);
+          if (err) {
+            reject(err);
+            return;
+          }
           resolve({
             sizeBytes: row.size_bytes || 0,
             sizeMB: Math.round((row.size_bytes || 0) / 1024 / 1024 * 100) / 100,
@@ -421,7 +552,10 @@ class Database {
         'SELECT * FROM processed_renames WHERE file_path = ?',
         [normalizedPath],
         (err, row) => {
-          if (err) reject(err);
+          if (err) {
+            reject(err);
+            return;
+          }
           resolve(!!row);
         }
       );
@@ -438,7 +572,10 @@ class Database {
         'SELECT * FROM processed_sorts WHERE file_path = ?',
         [normalizedPath],
         (err, row) => {
-          if (err) reject(err);
+          if (err) {
+            reject(err);
+            return;
+          }
           resolve(!!row);
         }
       );
@@ -455,7 +592,10 @@ class Database {
         'SELECT * FROM processed_renames WHERE file_path = ?',
         [normalizedPath],
         (err, row) => {
-          if (err) reject(err);
+          if (err) {
+            reject(err);
+            return;
+          }
           resolve(row);
         }
       );
@@ -472,7 +612,10 @@ class Database {
         'SELECT * FROM processed_sorts WHERE file_path = ?',
         [normalizedPath],
         (err, row) => {
-          if (err) reject(err);
+          if (err) {
+            reject(err);
+            return;
+          }
           resolve(row);
         }
       );
@@ -486,7 +629,7 @@ class Database {
     const normalizedPath = this._normalizePath(filePath);
     const normalizedOriginal = this._normalizeFilename(originalName);
 
-    console.log('Caching rename suggestion:', {
+    debugLog('Caching rename suggestion:', {
       path: normalizedPath,
       original: normalizedOriginal,
       suggested: suggestedName
@@ -522,7 +665,7 @@ class Database {
     const normalizedPath = this._normalizePath(filePath);
     const normalizedOriginal = this._normalizePath(originalPath);
 
-    console.log('Caching sort suggestion:', {
+    debugLog('Caching sort suggestion:', {
       path: normalizedPath,
       original: normalizedOriginal,
       suggested: suggestedPath,
@@ -559,7 +702,7 @@ class Database {
     const normalizedOldPath = this._normalizePath(oldPath);
     const normalizedNewPath = this._normalizePath(newPath);
 
-    console.log('Marking file as renamed:', {
+    debugLog('Marking file as renamed:', {
       from: normalizedOldPath,
       to: normalizedNewPath
     });
@@ -591,7 +734,7 @@ class Database {
     const normalizedOldPath = this._normalizePath(oldPath);
     const normalizedNewPath = this._normalizePath(newPath);
 
-    console.log('Marking file as sorted:', {
+    debugLog('Marking file as sorted:', {
       from: normalizedOldPath,
       to: normalizedNewPath
     });
@@ -623,7 +766,7 @@ class Database {
     const normalizedPath = this._normalizePath(filePath);
     const normalizedName = this._normalizeFilename(path.basename(filePath));
 
-    console.log('Marking file as rename skipped:', normalizedPath);
+    debugLog('Marking file as rename skipped:', normalizedPath);
 
     return new Promise((resolve, reject) => {
       this.db.run(
@@ -652,7 +795,7 @@ class Database {
   async markSortSkipped(filePath) {
     const normalizedPath = this._normalizePath(filePath);
 
-    console.log('Marking file as sort skipped:', normalizedPath);
+    debugLog('Marking file as sort skipped:', normalizedPath);
 
     return new Promise((resolve, reject) => {
       this.db.run(
@@ -679,7 +822,7 @@ class Database {
    * Get all files not processed for renaming with optimized batch processing
    */
   async getUnprocessedRenames(filePaths) {
-    console.log('Getting unprocessed renames from:', filePaths);
+    debugLog('Getting unprocessed renames from:', filePaths);
 
     // Process paths in batches of 500 for better performance
     const BATCH_SIZE = 500;
@@ -717,7 +860,7 @@ class Database {
       });
     }
 
-    console.log('Total unprocessed paths for renaming:', results.length);
+    debugLog('Total unprocessed paths for renaming:', results.length);
     return results;
   }
 
@@ -725,7 +868,7 @@ class Database {
    * Get all files not processed for sorting with optimized batch processing
    */
   async getUnprocessedSorts(filePaths) {
-    console.log('Getting unprocessed sorts from:', filePaths);
+    debugLog('Getting unprocessed sorts from:', filePaths);
 
     // Process paths in batches of 500 for better performance
     const BATCH_SIZE = 500;
@@ -763,7 +906,7 @@ class Database {
       });
     }
 
-    console.log('Total unprocessed paths for sorting:', results.length);
+    debugLog('Total unprocessed paths for sorting:', results.length);
     return results;
   }
 
@@ -771,8 +914,12 @@ class Database {
    * Bulk cache rename suggestions for better performance
    */
   async bulkCacheRenameSuggestions(suggestions) {
-    return new Promise((resolve, reject) => {
-      const stmt = this.db.prepare(`
+    return this._withTransaction(async () => {
+      for (const { filePath, originalName, suggestedName, reason } of suggestions) {
+        const normalizedPath = this._normalizePath(filePath);
+        const normalizedOriginal = this._normalizeFilename(originalName);
+        await this._run(
+          `
         INSERT INTO processed_renames 
         (file_path, original_name, suggested_name, reason, status) 
         VALUES (?, ?, ?, ?, 'suggested')
@@ -781,28 +928,13 @@ class Database {
           reason = excluded.reason,
           status = 'suggested',
           processed_at = CURRENT_TIMESTAMP
-      `);
-
-      this.db.serialize(() => {
-        this.db.run('BEGIN TRANSACTION');
-
-        for (const { filePath, originalName, suggestedName, reason } of suggestions) {
-          const normalizedPath = this._normalizePath(filePath);
-          const normalizedOriginal = this._normalizeFilename(originalName);
-          stmt.run([normalizedPath, normalizedOriginal, suggestedName, reason]);
-        }
-
-        this.db.run('COMMIT', (err) => {
-          if (err) {
-            console.error('Failed to bulk cache rename suggestions:', err);
-            reject(err);
-          } else {
-            resolve();
-          }
-        });
-      });
-
-      stmt.finalize();
+      `,
+          [normalizedPath, normalizedOriginal, suggestedName, reason]
+        );
+      }
+    }).catch((error) => {
+      console.error('Failed to bulk cache rename suggestions:', error);
+      throw error;
     });
   }
 
@@ -810,8 +942,12 @@ class Database {
    * Bulk cache sort suggestions for better performance
    */
   async bulkCacheSortSuggestions(suggestions) {
-    return new Promise((resolve, reject) => {
-      const stmt = this.db.prepare(`
+    return this._withTransaction(async () => {
+      for (const { filePath, originalPath, suggestedPath, category } of suggestions) {
+        const normalizedPath = this._normalizePath(filePath);
+        const normalizedOriginal = this._normalizePath(originalPath);
+        await this._run(
+          `
         INSERT INTO processed_sorts 
         (file_path, original_path, suggested_path, category, status) 
         VALUES (?, ?, ?, ?, 'suggested')
@@ -820,28 +956,13 @@ class Database {
           category = excluded.category,
           status = 'suggested',
           processed_at = CURRENT_TIMESTAMP
-      `);
-
-      this.db.serialize(() => {
-        this.db.run('BEGIN TRANSACTION');
-
-        for (const { filePath, originalPath, suggestedPath, category } of suggestions) {
-          const normalizedPath = this._normalizePath(filePath);
-          const normalizedOriginal = this._normalizePath(originalPath);
-          stmt.run([normalizedPath, normalizedOriginal, suggestedPath, category]);
-        }
-
-        this.db.run('COMMIT', (err) => {
-          if (err) {
-            console.error('Failed to bulk cache sort suggestions:', err);
-            reject(err);
-          } else {
-            resolve();
-          }
-        });
-      });
-
-      stmt.finalize();
+      `,
+          [normalizedPath, normalizedOriginal, suggestedPath, category]
+        );
+      }
+    }).catch((error) => {
+      console.error('Failed to bulk cache sort suggestions:', error);
+      throw error;
     });
   }
 
@@ -854,7 +975,10 @@ class Database {
         'SELECT value FROM settings WHERE key = ?',
         [key],
         (err, row) => {
-          if (err) reject(err);
+          if (err) {
+            reject(err);
+            return;
+          }
           resolve(row ? row.value : null);
         }
       );
@@ -867,16 +991,11 @@ class Database {
   async getAllSettings() {
     return new Promise((resolve, reject) => {
       this.db.all('SELECT key, value FROM settings', (err, rows) => {
-        if (err) reject(err);
-        const settings = {};
-        rows.forEach(row => {
-          try {
-            settings[row.key] = JSON.parse(row.value);
-          } catch (e) {
-            settings[row.key] = row.value;
-          }
-        });
-        resolve(settings);
+        if (err) {
+          reject(err);
+          return;
+        }
+        resolve(parseSettingsRows(rows));
       });
     });
   }
@@ -895,7 +1014,10 @@ class Database {
            updated_at = CURRENT_TIMESTAMP`,
         [key, serializedValue],
         (err) => {
-          if (err) reject(err);
+          if (err) {
+            reject(err);
+            return;
+          }
           resolve();
         }
       );
@@ -906,34 +1028,26 @@ class Database {
    * Save multiple settings at once
    */
   async saveSettings(settings) {
-    return new Promise((resolve, reject) => {
-      const stmt = this.db.prepare(`
+    if (!settings || typeof settings !== 'object') {
+      return;
+    }
+
+    return this._withTransaction(async () => {
+      for (const [key, value] of Object.entries(settings)) {
+        await this._run(
+          `
         INSERT INTO settings (key, value, updated_at) 
         VALUES (?, ?, CURRENT_TIMESTAMP)
         ON CONFLICT(key) DO UPDATE SET
           value = excluded.value,
           updated_at = CURRENT_TIMESTAMP
-      `);
-
-      this.db.serialize(() => {
-        this.db.run('BEGIN TRANSACTION');
-
-        for (const [key, value] of Object.entries(settings)) {
-          const serializedValue = typeof value === 'object' ? JSON.stringify(value) : value;
-          stmt.run([key, serializedValue]);
-        }
-
-        this.db.run('COMMIT', (err) => {
-          if (err) {
-            console.error('Failed to save settings:', err);
-            reject(err);
-          } else {
-            resolve();
-          }
-        });
-      });
-
-      stmt.finalize();
+      `,
+          [key, this._serializeValue(value)]
+        );
+      }
+    }).catch((error) => {
+      console.error('Failed to save settings:', error);
+      throw error;
     });
   }
 
@@ -946,12 +1060,11 @@ class Database {
         'SELECT value FROM workspace_settings WHERE workspace_id = ? AND key = ?',
         [workspaceId, key],
         (err, row) => {
-          if (err) reject(err);
-          try {
-            resolve(row ? JSON.parse(row.value) : null);
-          } catch (e) {
-            resolve(row ? row.value : null);
+          if (err) {
+            reject(err);
+            return;
           }
+          resolve(row ? parseJsonValue(row.value) : null);
         }
       );
     });
@@ -966,16 +1079,11 @@ class Database {
         'SELECT key, value FROM workspace_settings WHERE workspace_id = ?',
         [workspaceId],
         (err, rows) => {
-          if (err) reject(err);
-          const settings = {};
-          rows.forEach(row => {
-            try {
-              settings[row.key] = JSON.parse(row.value);
-            } catch (e) {
-              settings[row.key] = row.value;
-            }
-          });
-          resolve(settings);
+          if (err) {
+            reject(err);
+            return;
+          }
+          resolve(parseSettingsRows(rows));
         }
       );
     });
@@ -995,7 +1103,10 @@ class Database {
            updated_at = CURRENT_TIMESTAMP`,
         [workspaceId, key, serializedValue],
         (err) => {
-          if (err) reject(err);
+          if (err) {
+            reject(err);
+            return;
+          }
           resolve();
         }
       );
@@ -1008,7 +1119,10 @@ class Database {
   async getWorkspaces() {
     return new Promise((resolve, reject) => {
       this.db.all('SELECT * FROM workspaces ORDER BY created_at ASC', (err, rows) => {
-        if (err) reject(err);
+        if (err) {
+          reject(err);
+          return;
+        }
         resolve(rows || []);
       });
     });
@@ -1028,7 +1142,10 @@ class Database {
            updated_at = CURRENT_TIMESTAMP`,
         [workspace.id, workspace.name, workspace.emoji],
         (err) => {
-          if (err) reject(err);
+          if (err) {
+            reject(err);
+            return;
+          }
           resolve();
         }
       );
@@ -1041,7 +1158,10 @@ class Database {
   async deleteWorkspace(id) {
     return new Promise((resolve, reject) => {
       this.db.run('DELETE FROM workspaces WHERE id = ?', [id], (err) => {
-        if (err) reject(err);
+        if (err) {
+          reject(err);
+          return;
+        }
         resolve();
       });
     });
@@ -1070,26 +1190,27 @@ class Database {
             return;
           }
 
-          const settingsObj = {};
-          settings.forEach(row => {
-            try {
-              settingsObj[row.key] = JSON.parse(row.value);
-            } catch (e) {
-              settingsObj[row.key] = row.value;
+          this.db.all('SELECT * FROM custom_sections WHERE workspace_id = ? ORDER BY created_at ASC', [workspaceId], (err, customSections) => {
+            if (err) {
+              reject(err);
+              return;
             }
-          });
 
-          resolve({
-            workspace: {
-              id: workspace.id,
-              name: workspace.name,
-              emoji: workspace.emoji,
-              created_at: workspace.created_at,
-              updated_at: workspace.updated_at
-            },
-            settings: settingsObj,
-            exportedAt: new Date().toISOString(),
-            version: '1.0'
+            const settingsObj = parseSettingsRows(settings);
+
+            resolve({
+              workspace: {
+                id: workspace.id,
+                name: workspace.name,
+                emoji: workspace.emoji,
+                created_at: workspace.created_at,
+                updated_at: workspace.updated_at
+              },
+              settings: settingsObj,
+              customSections: parseCustomSectionsRows(customSections),
+              exportedAt: new Date().toISOString(),
+              version: '1.0'
+            });
           });
         });
       });
@@ -1102,104 +1223,81 @@ class Database {
   async importWorkspace(workspaceData, options = {}) {
     const { generateNewId = false, overwriteExisting = false } = options;
 
-    return new Promise((resolve, reject) => {
-      this.db.serialize(() => {
-        this.db.run('BEGIN TRANSACTION');
+    if (!workspaceData?.workspace?.id || !workspaceData.workspace.name) {
+      throw new Error('Invalid workspace backup data.');
+    }
 
-        try {
-          let workspaceId = workspaceData.workspace.id;
+    let workspaceId = workspaceData.workspace.id;
+    if (generateNewId) {
+      workspaceId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
+    }
 
-          // Generate new ID if requested
-          if (generateNewId) {
-            workspaceId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
-          }
+    return this._withTransaction(async () => {
+      const existing = await this._get('SELECT id FROM workspaces WHERE id = ?', [workspaceId]);
+      if (existing && !overwriteExisting) {
+        throw new Error('Workspace already exists. Use overwriteExisting option to replace it.');
+      }
 
-          // Check if workspace already exists
-          this.db.get('SELECT id FROM workspaces WHERE id = ?', [workspaceId], (err, existing) => {
-            if (err) {
-              this.db.run('ROLLBACK');
-              reject(err);
-              return;
-            }
+      if (existing) {
+        await this._run(
+          'UPDATE workspaces SET name = ?, emoji = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+          [workspaceData.workspace.name, workspaceData.workspace.emoji, workspaceId]
+        );
+      } else {
+        await this._run(
+          'INSERT INTO workspaces (id, name, emoji) VALUES (?, ?, ?)',
+          [workspaceId, workspaceData.workspace.name, workspaceData.workspace.emoji]
+        );
+      }
 
-            if (existing && !overwriteExisting) {
-              this.db.run('ROLLBACK');
-              reject(new Error('Workspace already exists. Use overwriteExisting option to replace it.'));
-              return;
-            }
+      if (overwriteExisting && existing) {
+        await this._run('DELETE FROM workspace_settings WHERE workspace_id = ?', [workspaceId]);
+        await this._run('DELETE FROM custom_sections WHERE workspace_id = ?', [workspaceId]);
+      }
 
-            // Insert or update workspace
-            const workspaceQuery = overwriteExisting && existing
-              ? `UPDATE workspaces SET name = ?, emoji = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
-              : `INSERT INTO workspaces (id, name, emoji) VALUES (?, ?, ?)`;
+      for (const [key, value] of Object.entries(workspaceData.settings || {})) {
+        await this._run(
+          `INSERT INTO workspace_settings (workspace_id, key, value, updated_at)
+           VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+           ON CONFLICT(workspace_id, key) DO UPDATE SET
+             value = excluded.value,
+             updated_at = CURRENT_TIMESTAMP`,
+          [workspaceId, key, this._serializeValue(value)]
+        );
+      }
 
-            const workspaceParams = overwriteExisting && existing
-              ? [workspaceData.workspace.name, workspaceData.workspace.emoji, workspaceId]
-              : [workspaceId, workspaceData.workspace.name, workspaceData.workspace.emoji];
-
-            this.db.run(workspaceQuery, workspaceParams, (err) => {
-              if (err) {
-                this.db.run('ROLLBACK');
-                reject(err);
-                return;
-              }
-
-              // Clear existing settings if overwriting
-              if (overwriteExisting && existing) {
-                this.db.run('DELETE FROM workspace_settings WHERE workspace_id = ?', [workspaceId], (err) => {
-                  if (err) {
-                    this.db.run('ROLLBACK');
-                    reject(err);
-                    return;
-                  }
-                  insertSettings();
-                });
-              } else {
-                insertSettings();
-              }
-
-              function insertSettings() {
-                // Insert settings
-                const settingsStmt = this.db.prepare(`
-                  INSERT INTO workspace_settings (workspace_id, key, value, updated_at)
-                  VALUES (?, ?, ?, CURRENT_TIMESTAMP)
-                `);
-
-                for (const [key, value] of Object.entries(workspaceData.settings || {})) {
-                  const serializedValue = typeof value === 'object' ? JSON.stringify(value) : value;
-                  settingsStmt.run([workspaceId, key, serializedValue]);
-                }
-
-                settingsStmt.finalize((err) => {
-                  if (err) {
-                    this.db.run('ROLLBACK');
-                    reject(err);
-                    return;
-                  }
-
-                  this.db.run('COMMIT', (err) => {
-                    if (err) {
-                      reject(err);
-                    } else {
-                      resolve({
-                        success: true,
-                        workspaceId: workspaceId,
-                        imported: {
-                          workspace: workspaceData.workspace.name,
-                          settings: Object.keys(workspaceData.settings || {}).length
-                        }
-                      });
-                    }
-                  });
-                });
-              }
-            });
-          });
-        } catch (error) {
-          this.db.run('ROLLBACK');
-          reject(error);
+      for (const section of workspaceData.customSections || []) {
+        let sectionId = section.id || createCustomSectionId();
+        const existingSection = await this._get('SELECT id FROM custom_sections WHERE id = ?', [sectionId]);
+        if (generateNewId || existingSection) {
+          sectionId = createCustomSectionId();
         }
-      });
+
+        await this._run(
+          `INSERT INTO custom_sections (id, workspace_id, name, icon, color, items, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP), COALESCE(?, CURRENT_TIMESTAMP))`,
+          [
+            sectionId,
+            workspaceId,
+            section.name,
+            section.icon || null,
+            section.color || null,
+            JSON.stringify(section.items || []),
+            section.created_at || null,
+            section.updated_at || null
+          ]
+        );
+      }
+
+      return {
+        success: true,
+        workspaceId,
+        imported: {
+          workspace: workspaceData.workspace.name,
+          settings: Object.keys(workspaceData.settings || {}).length,
+          customSections: (workspaceData.customSections || []).length
+        }
+      };
     });
   }
 
@@ -1229,41 +1327,47 @@ class Database {
             return;
           }
 
-          // Group settings by workspace
-          const settingsByWorkspace = {};
-          workspaceSettings.forEach(setting => {
-            if (!settingsByWorkspace[setting.workspace_id]) {
-              settingsByWorkspace[setting.workspace_id] = {};
-            }
-            try {
-              settingsByWorkspace[setting.workspace_id][setting.key] = JSON.parse(setting.value);
-            } catch (e) {
-              settingsByWorkspace[setting.workspace_id][setting.key] = setting.value;
-            }
-          });
-
-          // Combine workspaces with their settings
-          exportData.workspaces = workspaces.map(workspace => ({
-            workspace: workspace,
-            settings: settingsByWorkspace[workspace.id] || {}
-          }));
-
-          // Get global settings
-          this.db.all('SELECT key, value FROM settings', (err, settings) => {
+          this.db.all('SELECT * FROM custom_sections ORDER BY created_at ASC', (err, customSections) => {
             if (err) {
               reject(err);
               return;
             }
 
-            settings.forEach(row => {
-              try {
-                exportData.settings[row.key] = JSON.parse(row.value);
-              } catch (e) {
-                exportData.settings[row.key] = row.value;
+            // Group settings by workspace
+            const settingsByWorkspace = {};
+            workspaceSettings.forEach(setting => {
+              if (!settingsByWorkspace[setting.workspace_id]) {
+                settingsByWorkspace[setting.workspace_id] = {};
               }
+              settingsByWorkspace[setting.workspace_id][setting.key] = parseJsonValue(setting.value);
             });
 
-            resolve(exportData);
+            const sectionsByWorkspace = {};
+            parseCustomSectionsRows(customSections).forEach(section => {
+              if (!sectionsByWorkspace[section.workspace_id]) {
+                sectionsByWorkspace[section.workspace_id] = [];
+              }
+              sectionsByWorkspace[section.workspace_id].push(section);
+            });
+
+            // Combine workspaces with their settings and custom sections
+            exportData.workspaces = workspaces.map(workspace => ({
+              workspace: workspace,
+              settings: settingsByWorkspace[workspace.id] || {},
+              customSections: sectionsByWorkspace[workspace.id] || []
+            }));
+
+            // Get global settings
+            this.db.all('SELECT key, value FROM settings', (err, settings) => {
+              if (err) {
+                reject(err);
+                return;
+              }
+
+              exportData.settings = parseSettingsRows(settings);
+
+              resolve(exportData);
+            });
           });
         });
       });
@@ -1276,98 +1380,100 @@ class Database {
   async importAllData(backupData, options = {}) {
     const { overwriteExisting = false } = options;
 
-    return new Promise((resolve, reject) => {
-      this.db.serialize(() => {
-        this.db.run('BEGIN TRANSACTION');
+    const results = {
+      success: true,
+      imported: {
+        workspaces: 0,
+        settings: 0,
+        customSections: 0
+      },
+      errors: []
+    };
 
-        try {
-          const results = {
-            success: true,
-            imported: {
-              workspaces: 0,
-              settings: 0
-            },
-            errors: []
-          };
-
-          // Import global settings
-          if (backupData.settings && Object.keys(backupData.settings).length > 0) {
-            if (overwriteExisting) {
-              this.db.run('DELETE FROM settings');
-            }
-
-            const settingsStmt = this.db.prepare(`
-              INSERT OR ${overwriteExisting ? 'REPLACE' : 'IGNORE'} INTO settings (key, value, updated_at)
-              VALUES (?, ?, CURRENT_TIMESTAMP)
-            `);
-
-            for (const [key, value] of Object.entries(backupData.settings)) {
-              const serializedValue = typeof value === 'object' ? JSON.stringify(value) : value;
-              settingsStmt.run([key, serializedValue]);
-              results.imported.settings++;
-            }
-            settingsStmt.finalize();
-          }
-
-          // Import workspaces
-          if (backupData.workspaces && backupData.workspaces.length > 0) {
-            for (const workspaceData of backupData.workspaces) {
-              try {
-                // Check if workspace exists
-                const existing = this.db.get('SELECT id FROM workspaces WHERE id = ?', [workspaceData.workspace.id]);
-
-                if (existing && !overwriteExisting) {
-                  results.errors.push(`Workspace '${workspaceData.workspace.name}' already exists and was skipped`);
-                  continue;
-                }
-
-                // Insert or replace workspace
-                const workspaceQuery = overwriteExisting
-                  ? `INSERT OR REPLACE INTO workspaces (id, name, emoji) VALUES (?, ?, ?)`
-                  : `INSERT OR IGNORE INTO workspaces (id, name, emoji) VALUES (?, ?, ?)`;
-
-                this.db.run(workspaceQuery, [
-                  workspaceData.workspace.id,
-                  workspaceData.workspace.name,
-                  workspaceData.workspace.emoji
-                ]);
-
-                // Clear existing workspace settings if overwriting
-                if (overwriteExisting) {
-                  this.db.run('DELETE FROM workspace_settings WHERE workspace_id = ?', [workspaceData.workspace.id]);
-                }
-
-                // Insert workspace settings
-                const wsSettingsStmt = this.db.prepare(`
-                  INSERT OR IGNORE INTO workspace_settings (workspace_id, key, value, updated_at)
-                  VALUES (?, ?, ?, CURRENT_TIMESTAMP)
-                `);
-
-                for (const [key, value] of Object.entries(workspaceData.settings || {})) {
-                  const serializedValue = typeof value === 'object' ? JSON.stringify(value) : value;
-                  wsSettingsStmt.run([workspaceData.workspace.id, key, serializedValue]);
-                }
-                wsSettingsStmt.finalize();
-
-                results.imported.workspaces++;
-              } catch (error) {
-                results.errors.push(`Failed to import workspace '${workspaceData.workspace.name}': ${error.message}`);
-              }
-            }
-          }
-
-          this.db.run('COMMIT', (err) => {
-            if (err) {
-              reject(err);
-            } else {
-              resolve(results);
-            }
-          });
-        } catch (error) {
-          this.db.run('ROLLBACK');
-          reject(error);
+    return this._withTransaction(async () => {
+      if (backupData.settings && Object.keys(backupData.settings).length > 0) {
+        if (overwriteExisting) {
+          await this._run('DELETE FROM settings');
         }
-      });
+
+        for (const [key, value] of Object.entries(backupData.settings)) {
+          const insertResult = await this._run(
+            `INSERT OR ${overwriteExisting ? 'REPLACE' : 'IGNORE'} INTO settings (key, value, updated_at)
+             VALUES (?, ?, CURRENT_TIMESTAMP)`,
+            [key, this._serializeValue(value)]
+          );
+          results.imported.settings += insertResult.changes || 0;
+        }
+      }
+
+      for (const workspaceData of backupData.workspaces || []) {
+        const workspace = workspaceData.workspace;
+        try {
+          if (!workspace?.id || !workspace.name) {
+            throw new Error('Workspace entry is missing an id or name');
+          }
+
+          const existing = await this._get('SELECT id FROM workspaces WHERE id = ?', [workspace.id]);
+          if (existing && !overwriteExisting) {
+            results.errors.push(`Workspace '${workspace.name}' already exists and was skipped`);
+            continue;
+          }
+
+          if (existing) {
+            await this._run(
+              'UPDATE workspaces SET name = ?, emoji = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+              [workspace.name, workspace.emoji, workspace.id]
+            );
+            await this._run('DELETE FROM workspace_settings WHERE workspace_id = ?', [workspace.id]);
+            await this._run('DELETE FROM custom_sections WHERE workspace_id = ?', [workspace.id]);
+          } else {
+            await this._run(
+              `INSERT INTO workspaces (id, name, emoji, created_at, updated_at)
+               VALUES (?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP), COALESCE(?, CURRENT_TIMESTAMP))`,
+              [workspace.id, workspace.name, workspace.emoji, workspace.created_at || null, workspace.updated_at || null]
+            );
+          }
+
+          for (const [key, value] of Object.entries(workspaceData.settings || {})) {
+            await this._run(
+              `INSERT OR ${overwriteExisting ? 'REPLACE' : 'IGNORE'} INTO workspace_settings (workspace_id, key, value, updated_at)
+               VALUES (?, ?, ?, CURRENT_TIMESTAMP)`,
+              [workspace.id, key, this._serializeValue(value)]
+            );
+          }
+
+          for (const section of workspaceData.customSections || []) {
+            let sectionId = section.id || createCustomSectionId();
+            const existingSection = await this._get('SELECT id FROM custom_sections WHERE id = ?', [sectionId]);
+            if (existingSection) {
+              sectionId = createCustomSectionId();
+            }
+
+            await this._run(
+              `INSERT INTO custom_sections (id, workspace_id, name, icon, color, items, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP), COALESCE(?, CURRENT_TIMESTAMP))`,
+              [
+                sectionId,
+                workspace.id,
+                section.name,
+                section.icon || null,
+                section.color || null,
+                JSON.stringify(section.items || []),
+                section.created_at || null,
+                section.updated_at || null
+              ]
+            );
+            results.imported.customSections++;
+          }
+
+          results.imported.workspaces++;
+        } catch (error) {
+          results.errors.push(`Failed to import workspace '${workspace?.name || 'unknown'}': ${error.message}`);
+        }
+      }
+
+      results.success = results.errors.length === 0;
+      return results;
     });
   }
 
@@ -1385,10 +1491,7 @@ class Database {
             return;
           }
 
-          const sections = rows.map(row => ({
-            ...row,
-            items: JSON.parse(row.items || '[]')
-          }));
+          const sections = parseCustomSectionsRows(rows);
           resolve(sections);
         }
       );
@@ -1513,7 +1616,7 @@ class Database {
             return;
           }
 
-          const currentItems = JSON.parse(row.items || '[]');
+          const currentItems = parseJsonArrayValue(row.items || '[]');
           const newItems = [...currentItems, { ...item, id: Date.now().toString() }];
 
           this.db.run(
@@ -1552,7 +1655,7 @@ class Database {
             return;
           }
 
-          const currentItems = JSON.parse(row.items || '[]');
+          const currentItems = parseJsonArrayValue(row.items || '[]');
           const newItems = currentItems.filter(item => item.id !== itemId);
 
           this.db.run(
@@ -1572,15 +1675,20 @@ class Database {
   }
 
   close() {
-    console.log('Closing database connection');
+    debugLog('Closing database connection');
     this.db.close((err) => {
       if (err) {
         console.error('Error closing database:', err);
       } else {
-        console.log('Database connection closed successfully');
+        debugLog('Database connection closed successfully');
       }
     });
   }
 }
 
 module.exports = Database;
+module.exports.isSafeSettingKey = isSafeSettingKey;
+module.exports.parseCustomSectionsRows = parseCustomSectionsRows;
+module.exports.parseJsonArrayValue = parseJsonArrayValue;
+module.exports.parseJsonValue = parseJsonValue;
+module.exports.parseSettingsRows = parseSettingsRows;

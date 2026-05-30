@@ -368,7 +368,11 @@ const OperationHistoryPanel: React.FC = () => {
       )}
 
       {/* Confirm Clear Dialog */}
-      <Dialog open={confirmClear} onClose={() => setConfirmClear(false)}>
+      <Dialog
+        open={confirmClear}
+        onClose={() => setConfirmClear(false)}
+        PaperProps={{ tabIndex: -1 }}
+      >
         <DialogTitle sx={{ fontFamily: 'var(--font-header)' }}>
           Clear Operation History?
         </DialogTitle>

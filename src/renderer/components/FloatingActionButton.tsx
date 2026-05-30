@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { motion, AnimatePresence, Transition } from 'framer-motion';
 import { Fab, FabProps, Box } from '@mui/material';
 
@@ -25,13 +25,14 @@ const FloatingActionButton: React.FC<FloatingActionButtonProps> = ({
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [ripples, setRipples] = useState<Array<{ id: number; x: number; y: number }>>([]);
+  const nextRippleId = useRef(0);
 
   const handleClick = (event: React.MouseEvent<HTMLButtonElement>) => {
     if (variant === 'ripple') {
       const rect = event.currentTarget.getBoundingClientRect();
       const x = event.clientX - rect.left;
       const y = event.clientY - rect.top;
-      const newRipple = { id: Date.now(), x, y };
+      const newRipple = { id: nextRippleId.current++, x, y };
       
       setRipples(prev => [...prev, newRipple]);
       

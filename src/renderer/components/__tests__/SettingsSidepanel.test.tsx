@@ -8,9 +8,11 @@ describe('SettingsSidepanel', () => {
     { id: 'themes', label: 'Workspace Themes', icon: null },
     { id: 'workspace', label: 'Workspace', icon: null },
     { id: 'sections', label: 'Custom Sections', icon: null },
-    { id: 'api', label: 'API Keys', icon: null },
-    { id: 'ollama', label: 'Ollama', icon: null },
-    { id: 'shortcuts', label: 'Keyboard Shortcuts', icon: null }
+    { id: 'history', label: 'Operation History', icon: null },
+    { id: 'airules', label: 'AI Rules & Presets', icon: null },
+    { id: 'providers', label: 'AI Providers', icon: null },
+    { id: 'shortcuts', label: 'Keyboard Shortcuts', icon: null },
+    { id: 'about', label: 'About & Updates', icon: null }
   ];
 
   const defaultProps = {
@@ -31,17 +33,11 @@ describe('SettingsSidepanel', () => {
     });
   });
 
-  it('should render Settings header', () => {
-    render(<SettingsSidepanel {...defaultProps} />);
-    
-    expect(screen.getByText('Settings')).toBeInTheDocument();
-  });
-
   it('should highlight active tab', () => {
-    render(<SettingsSidepanel {...defaultProps} activeTab="api" />);
+    render(<SettingsSidepanel {...defaultProps} activeTab="providers" />);
     
-    const apiTab = screen.getByText('API Keys').closest('[role="button"]');
-    expect(apiTab).toHaveClass('Mui-selected');
+    const providersTab = screen.getByText('AI Providers').closest('[role="button"]');
+    expect(providersTab).toHaveClass('Mui-selected');
   });
 
   it('should call onTabChange when tab is clicked', () => {
@@ -69,8 +65,7 @@ describe('SettingsSidepanel', () => {
   it('should handle empty tabs array', () => {
     render(<SettingsSidepanel {...defaultProps} tabs={[]} />);
     
-    expect(screen.getByText('Settings')).toBeInTheDocument();
-    // Should not crash with empty tabs
+    expect(screen.queryAllByRole('button')).toHaveLength(0);
   });
 
   it('should apply correct styling for selected tab', () => {
@@ -136,8 +131,10 @@ describe('SettingsSidepanel', () => {
     expect(screen.getByText('Workspace Themes')).toBeInTheDocument();
     expect(screen.getByText('Workspace')).toBeInTheDocument();
     expect(screen.getByText('Custom Sections')).toBeInTheDocument();
-    expect(screen.getByText('API Keys')).toBeInTheDocument();
-    expect(screen.getByText('Ollama')).toBeInTheDocument();
+    expect(screen.getByText('Operation History')).toBeInTheDocument();
+    expect(screen.getByText('AI Rules & Presets')).toBeInTheDocument();
+    expect(screen.getByText('AI Providers')).toBeInTheDocument();
     expect(screen.getByText('Keyboard Shortcuts')).toBeInTheDocument();
+    expect(screen.getByText('About & Updates')).toBeInTheDocument();
   });
 });

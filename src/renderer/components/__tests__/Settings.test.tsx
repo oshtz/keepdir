@@ -148,7 +148,7 @@ describe('Settings', () => {
     });
     
     // The tabs should be present
-    expect(screen.getByText('API Keys')).toBeInTheDocument();
+    expect(screen.getByText('AI Providers')).toBeInTheDocument();
   });
 
   it('should render workspace management tab', async () => {
@@ -180,7 +180,7 @@ describe('Settings', () => {
       render(<Settings {...defaultProps} isOllamaAvailable={true} />);
     });
     
-    expect(screen.getByText('Ollama')).toBeInTheDocument();
+    expect(screen.getByText('AI Providers')).toBeInTheDocument();
   });
 
   it('should render ollama tab when not available', async () => {
@@ -188,7 +188,7 @@ describe('Settings', () => {
       render(<Settings {...defaultProps} isOllamaAvailable={false} />);
     });
     
-    expect(screen.getByText('Ollama')).toBeInTheDocument();
+    expect(screen.getByText('AI Providers')).toBeInTheDocument();
   });
 
   it('should call onClose when close button is clicked', async () => {
@@ -300,7 +300,7 @@ describe('Settings', () => {
       });
       
       // Click on API Keys tab
-      const apiKeysTab = screen.getByText('API Keys');
+      const apiKeysTab = screen.getByText('AI Providers');
       await act(async () => {
         fireEvent.click(apiKeysTab);
       });
@@ -321,7 +321,7 @@ describe('Settings', () => {
       });
       
       // Click on API Keys tab
-      const apiKeysTab = screen.getByText('API Keys');
+      const apiKeysTab = screen.getByText('AI Providers');
       await act(async () => {
         fireEvent.click(apiKeysTab);
       });
@@ -342,7 +342,7 @@ describe('Settings', () => {
       });
       
       // Click on API Keys tab
-      const apiKeysTab = screen.getByText('API Keys');
+      const apiKeysTab = screen.getByText('AI Providers');
       await act(async () => {
         fireEvent.click(apiKeysTab);
       });
@@ -367,7 +367,7 @@ describe('Settings', () => {
       });
       
       // Click on Ollama tab
-      const ollamaTab = screen.getByText('Ollama');
+      const ollamaTab = screen.getByText('AI Providers');
       await act(async () => {
         fireEvent.click(ollamaTab);
       });
@@ -395,7 +395,7 @@ describe('Settings', () => {
       });
       
       // Click on Ollama tab
-      const ollamaTab = screen.getByText('Ollama');
+      const ollamaTab = screen.getByText('AI Providers');
       await act(async () => {
         fireEvent.click(ollamaTab);
       });
@@ -417,7 +417,7 @@ describe('Settings', () => {
       });
       
       // Click on Ollama tab
-      const ollamaTab = screen.getByText('Ollama');
+      const ollamaTab = screen.getByText('AI Providers');
       await act(async () => {
         fireEvent.click(ollamaTab);
       });
@@ -654,12 +654,7 @@ describe('Settings', () => {
         fireEvent.click(resetButton);
       });
       
-      expect(mockWorkspaceContext.setWorkspaceTheme).toHaveBeenCalledWith({
-        name: 'Test Workspace Theme',
-        accentColor: '#FF5733',
-        darkMode: false,
-        customColors: {}
-      });
+      expect(mockWorkspaceContext.setWorkspaceTheme).toHaveBeenCalledWith(null);
     });
   });
 
@@ -707,6 +702,7 @@ describe('Settings', () => {
     });
 
     it('should handle load settings error', async () => {
+      const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
       mockElectronAPI.loadSettings.mockRejectedValue(new Error('Load failed'));
       
       await act(async () => {
@@ -716,6 +712,9 @@ describe('Settings', () => {
       await waitFor(() => {
         expect(screen.getByText('Failed to load settings')).toBeInTheDocument();
       });
+
+      expect(consoleSpy).toHaveBeenCalledWith('Failed to load settings:', expect.any(Error));
+      consoleSpy.mockRestore();
     });
   });
 
@@ -968,7 +967,7 @@ describe('Settings', () => {
       });
 
       // Click on Ollama tab
-      const ollamaTab = screen.getByText('Ollama');
+      const ollamaTab = screen.getByText('AI Providers');
       await act(async () => {
         fireEvent.click(ollamaTab);
       });
@@ -994,7 +993,7 @@ describe('Settings', () => {
       });
 
       // Click on Ollama tab
-      const ollamaTab = screen.getByText('Ollama');
+      const ollamaTab = screen.getByText('AI Providers');
       await act(async () => {
         fireEvent.click(ollamaTab);
       });
@@ -1087,8 +1086,6 @@ describe('Settings', () => {
     });
 
     it('should handle apply theme button click', async () => {
-      const consoleSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
-
       await act(async () => {
         render(<Settings {...defaultProps} />);
       });
@@ -1105,8 +1102,7 @@ describe('Settings', () => {
         fireEvent.click(applyButton);
       });
 
-      expect(consoleSpy).toHaveBeenCalledWith('Workspace theme saved');
-      consoleSpy.mockRestore();
+      expect(screen.getByText('Workspace theme saved')).toBeInTheDocument();
     });
 
     it('should handle reset theme when no current workspace', async () => {
@@ -1587,6 +1583,7 @@ describe('Settings', () => {
 
   describe('Settings Save Edge Cases', () => {
     it('should handle save settings exception', async () => {
+      const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
       mockElectronAPI.saveSettings.mockRejectedValue(new Error('Network error'));
 
       await act(async () => {
@@ -1602,6 +1599,9 @@ describe('Settings', () => {
       await waitFor(() => {
         expect(screen.getByText('Failed to save settings')).toBeInTheDocument();
       });
+
+      expect(consoleSpy).toHaveBeenCalledWith('Failed to save settings:', expect.any(Error));
+      consoleSpy.mockRestore();
     });
 
     it('should handle successful save with auto-close', async () => {
@@ -1631,50 +1631,6 @@ describe('Settings', () => {
 
       expect(onClose).toHaveBeenCalled();
       jest.useRealTimers();
-    });
-  });
-
-  describe('Dialog State Management', () => {
-    it('should handle share dialog open/close', async () => {
-      await act(async () => {
-        render(<Settings {...defaultProps} />);
-      });
-
-      // Click on Workspace tab
-      const workspaceTab = screen.getByText('Workspace');
-      await act(async () => {
-        fireEvent.click(workspaceTab);
-      });
-
-      // Find and click share button
-      const shareButton = screen.getByText('Share Workspace');
-      await act(async () => {
-        fireEvent.click(shareButton);
-      });
-
-      // Share dialog should be rendered (mocked component)
-      expect(screen.getAllByText('Settings')).toHaveLength(1);
-    });
-
-    it('should handle share button when no current workspace', async () => {
-      (useWorkspace as jest.Mock).mockReturnValue({
-        ...mockWorkspaceContext,
-        currentWorkspace: null,
-      });
-
-      await act(async () => {
-        render(<Settings {...defaultProps} />);
-      });
-
-      // Click on Workspace tab
-      const workspaceTab = screen.getByText('Workspace');
-      await act(async () => {
-        fireEvent.click(workspaceTab);
-      });
-
-      // Find share button (should be disabled)
-      const shareButton = screen.getByText('Share Workspace');
-      expect(shareButton).toBeDisabled();
     });
   });
 

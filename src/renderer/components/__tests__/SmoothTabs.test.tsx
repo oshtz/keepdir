@@ -7,7 +7,13 @@ import SmoothTabs from '../SmoothTabs';
 // Mock framer-motion
 jest.mock('framer-motion', () => ({
   motion: {
-    div: ({ children, ...props }: any) => <div {...props}>{children}</div>,
+    div: ({ children, ...props }: any) => {
+      const motionProps = new Set(['layoutId', 'initial', 'animate', 'exit', 'transition', 'variants']);
+      const domProps = Object.fromEntries(
+        Object.entries(props).filter(([key]) => !motionProps.has(key))
+      );
+      return <div {...domProps}>{children}</div>;
+    },
   },
 }));
 

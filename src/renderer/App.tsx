@@ -343,9 +343,6 @@ const AppContent: React.FC = () => {
       return modelList;
     } catch (error) {
       clearTimeout(timeoutId);
-      if (!(error instanceof DOMException && error.name === "AbortError")) {
-        console.debug("Ollama not available");
-      }
       setIsOllamaAvailable(false);
       return [];
     }

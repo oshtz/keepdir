@@ -284,6 +284,7 @@ const SortSuggestions: React.FC<SortSuggestionsProps> = ({
       maxWidth="md"
       fullWidth
       PaperProps={{
+        tabIndex: -1,
         sx: {
           borderRadius: 1.5,
           background: theme.palette.background.default,

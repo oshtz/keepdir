@@ -88,6 +88,7 @@ const LoginDialog: React.FC<LoginDialogProps> = ({ open, onClose, onLogin, darkM
       maxWidth="sm"
       fullWidth
       PaperProps={{
+        tabIndex: -1,
         sx: {
           borderRadius: 1.5,
           overflow: 'visible',

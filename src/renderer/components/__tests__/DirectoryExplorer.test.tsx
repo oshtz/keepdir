@@ -67,6 +67,7 @@ const mockElectronAPI = {
   loadDirectory: jest.fn(),
   selectDirectory: jest.fn(),
   openFile: jest.fn(),
+  revealInFolder: jest.fn(),
   analyzeDirectoryForSort: jest.fn(),
   analyzeDirectoryForRename: jest.fn(),
   applySuggestions: jest.fn(),

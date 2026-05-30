@@ -1,5 +1,6 @@
 const { app } = require('electron');
 const axios = require('axios');
+const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
@@ -7,6 +8,9 @@ const { spawn } = require('child_process');
 // Configuration
 const GITHUB_REPO = 'oshtz/keepdir';
 const UPDATE_DIR_NAME = 'updates';
+let lastUpdateInfo = null;
+let downloadedUpdatePath = null;
+let downloadedUpdateSha256 = null;
 
 // Platform-specific asset patterns
 // Windows: exact match for portable zip
@@ -27,6 +31,127 @@ const ASSET_PATTERNS = {
  */
 function getUpdateDir() {
   return path.join(app.getPath('userData'), UPDATE_DIR_NAME);
+}
+
+function getSafeUpdatePath(assetName, version) {
+  const updateDir = path.resolve(getUpdateDir());
+  const fallbackName = `keepdir-${version}.zip`;
+  const fileName = path.basename(assetName || fallbackName);
+
+  if (!fileName || !fileName.toLowerCase().endsWith('.zip')) {
+    throw new Error('Update asset must be a zip file.');
+  }
+
+  const updatePath = path.resolve(updateDir, fileName);
+  if (path.dirname(updatePath) !== updateDir) {
+    throw new Error('Invalid update asset path.');
+  }
+
+  return updatePath;
+}
+
+function isTrustedDownloadUrl(downloadUrl) {
+  try {
+    const parsed = new URL(downloadUrl);
+    return (
+      parsed.protocol === 'https:' &&
+      parsed.hostname === 'github.com' &&
+      parsed.pathname.startsWith(`/${GITHUB_REPO}/releases/download/`)
+    );
+  } catch {
+    return false;
+  }
+}
+
+function isValidSha256(value) {
+  return typeof value === 'string' && /^[a-f0-9]{64}$/i.test(value.trim());
+}
+
+function findChecksumAsset(assets, updateAsset) {
+  const expectedNames = [
+    `${updateAsset.name}.sha256`,
+    `${updateAsset.name}.sha256sum`,
+    'SHA256SUMS',
+    'checksums.txt'
+  ].map(name => name.toLowerCase());
+
+  return assets.find(asset => expectedNames.includes((asset.name || '').toLowerCase())) || null;
+}
+
+function parseChecksumText(text, assetName) {
+  const trimmed = String(text || '').trim();
+  if (isValidSha256(trimmed)) {
+    return trimmed.toLowerCase();
+  }
+
+  const normalizedAssetName = path.basename(assetName || '').toLowerCase();
+  const lines = trimmed.split(/\r?\n/);
+
+  for (const line of lines) {
+    const match = line.trim().match(/^([a-f0-9]{64})\s+\*?(.+)$/i);
+    if (!match) {
+      continue;
+    }
+
+    const candidateName = path.basename(match[2].trim()).toLowerCase();
+    if (candidateName === normalizedAssetName) {
+      return match[1].toLowerCase();
+    }
+  }
+
+  throw new Error(`Checksum file does not contain a SHA-256 digest for ${assetName}.`);
+}
+
+function computeFileSha256(filePath) {
+  return new Promise((resolve, reject) => {
+    const hash = crypto.createHash('sha256');
+    const stream = fs.createReadStream(filePath);
+
+    stream.on('data', (chunk) => {
+      hash.update(chunk);
+    });
+    stream.on('error', reject);
+    stream.on('end', () => {
+      resolve(hash.digest('hex'));
+    });
+  });
+}
+
+async function fetchExpectedSha256(updateInfo) {
+  if (updateInfo.sha256) {
+    return updateInfo.sha256;
+  }
+
+  if (!updateInfo.checksumUrl || !isTrustedDownloadUrl(updateInfo.checksumUrl)) {
+    throw new Error('Release checksum URL is not trusted.');
+  }
+
+  const response = await axios.get(updateInfo.checksumUrl, {
+    responseType: 'text',
+    timeout: 30000,
+    headers: {
+      'User-Agent': `keepdir/${app.getVersion()}`
+    }
+  });
+  return parseChecksumText(response.data, updateInfo.assetName);
+}
+
+function assertMatchesLastUpdate(updateInfo) {
+  if (!lastUpdateInfo) {
+    throw new Error('Check for updates before downloading.');
+  }
+
+  if (!updateInfo) {
+    return lastUpdateInfo;
+  }
+
+  for (const key of ['version', 'downloadUrl', 'assetName', 'checksumUrl']) {
+    if (updateInfo[key] && updateInfo[key] !== lastUpdateInfo[key]) {
+      throw new Error('Update details do not match the latest trusted update check.');
+    }
+  }
+
+  return lastUpdateInfo;
 }
 
 /**
@@ -68,6 +193,9 @@ async function checkForUpdate(mainWindow) {
   }
 
   try {
+    lastUpdateInfo = null;
+    downloadedUpdatePath = null;
+    downloadedUpdateSha256 = null;
     const currentVersion = app.getVersion();
     const apiUrl = `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`;
 
@@ -120,15 +248,32 @@ async function checkForUpdate(mainWindow) {
       return { error: 'No compatible update asset found for this platform.' };
     }
 
+    const checksumAsset = findChecksumAsset(assets, asset);
+    if (!checksumAsset) {
+      return { error: `No SHA-256 checksum asset found for ${asset.name}.` };
+    }
+
+    const updateInfo = {
+      version: latestVersion,
+      notes: release.body || null,
+      publishedAt: release.published_at || null,
+      downloadUrl: asset.browser_download_url,
+      assetName: asset.name,
+      assetSize: asset.size,
+      checksumUrl: checksumAsset.browser_download_url,
+      checksumAssetName: checksumAsset.name
+    };
+
+    if (!isTrustedDownloadUrl(updateInfo.downloadUrl)) {
+      return { error: 'Release asset URL is not trusted.' };
+    }
+    if (!isTrustedDownloadUrl(updateInfo.checksumUrl)) {
+      return { error: 'Release checksum URL is not trusted.' };
+    }
+
+    lastUpdateInfo = updateInfo;
     return {
-      updateInfo: {
-        version: latestVersion,
-        notes: release.body || null,
-        publishedAt: release.published_at || null,
-        downloadUrl: asset.browser_download_url,
-        assetName: asset.name,
-        assetSize: asset.size
-      }
+      updateInfo
     };
   } catch (error) {
     if (error.response) {
@@ -155,11 +300,12 @@ async function downloadUpdate(updateInfo, mainWindow) {
     return { error: 'Updates are disabled in development mode.' };
   }
 
-  if (!updateInfo || !updateInfo.downloadUrl) {
-    return { error: 'Invalid update info.' };
-  }
-
   try {
+    const trustedUpdateInfo = assertMatchesLastUpdate(updateInfo);
+    if (!isTrustedDownloadUrl(trustedUpdateInfo.downloadUrl)) {
+      return { error: 'Release asset URL is not trusted.' };
+    }
+
     // Create updates directory
     const updateDir = getUpdateDir();
     if (!fs.existsSync(updateDir)) {
@@ -167,13 +313,15 @@ async function downloadUpdate(updateInfo, mainWindow) {
     }
 
     // Determine filename
-    const fileName = updateInfo.assetName || `keepdir-${updateInfo.version}.zip`;
-    const updatePath = path.join(updateDir, fileName);
+    const updatePath = getSafeUpdatePath(trustedUpdateInfo.assetName, trustedUpdateInfo.version);
+    downloadedUpdatePath = null;
+    downloadedUpdateSha256 = null;
+    const expectedSha256 = await fetchExpectedSha256(trustedUpdateInfo);
 
     // Download with progress reporting
     const response = await axios({
       method: 'get',
-      url: updateInfo.downloadUrl,
+      url: trustedUpdateInfo.downloadUrl,
       responseType: 'stream',
       timeout: 300000, // 5 minute timeout for large files
       headers: {
@@ -181,13 +329,15 @@ async function downloadUpdate(updateInfo, mainWindow) {
       }
     });
 
-    const totalLength = parseInt(response.headers['content-length'], 10) || updateInfo.assetSize || 0;
+    const totalLength = parseInt(response.headers['content-length'], 10) || trustedUpdateInfo.assetSize || 0;
     let downloaded = 0;
+    const hash = crypto.createHash('sha256');
 
     const writer = fs.createWriteStream(updatePath);
 
     response.data.on('data', (chunk) => {
       downloaded += chunk.length;
+      hash.update(chunk);
       const percent = totalLength > 0 ? Math.round((downloaded / totalLength) * 100) : 0;
 
       // Send progress to renderer
@@ -200,23 +350,39 @@ async function downloadUpdate(updateInfo, mainWindow) {
       }
     });
 
-    return new Promise((resolve, reject) => {
-      writer.on('finish', () => {
-        resolve({ updatePath });
-      });
-
-      writer.on('error', (err) => {
-        // Clean up partial download
+    await new Promise((resolve, reject) => {
+      const rejectAndCleanup = (err) => {
         try {
           fs.unlinkSync(updatePath);
         } catch (e) {
           // Ignore cleanup errors
         }
         reject(err);
+      };
+
+      writer.on('finish', () => {
+        if (trustedUpdateInfo.assetSize && downloaded !== trustedUpdateInfo.assetSize) {
+          rejectAndCleanup(new Error('Downloaded update size did not match the release asset size.'));
+          return;
+        }
+
+        const actualSha256 = hash.digest('hex');
+        if (actualSha256 !== expectedSha256) {
+          rejectAndCleanup(new Error('Downloaded update checksum did not match the release checksum.'));
+          return;
+        }
+        resolve();
       });
+
+      writer.on('error', rejectAndCleanup);
+      response.data.on('error', rejectAndCleanup);
 
       response.data.pipe(writer);
     });
+
+    downloadedUpdatePath = updatePath;
+    downloadedUpdateSha256 = expectedSha256;
+    return { updatePath };
   } catch (error) {
     console.error('Download failed:', error.message);
     return { error: `Failed to download update: ${error.message}` };
@@ -233,11 +399,36 @@ async function installUpdate(updatePath) {
     return { error: 'Updates are disabled in development mode.' };
   }
 
-  if (!updatePath || !fs.existsSync(updatePath)) {
-    return { error: 'Update file not found.' };
-  }
-
   try {
+    if (!downloadedUpdatePath) {
+      return { error: 'Download the trusted update before installing.' };
+    }
+    if (!downloadedUpdateSha256) {
+      return { error: 'Trusted update checksum is missing. Download the update again.' };
+    }
+
+    const updateDir = path.resolve(getUpdateDir());
+    const resolvedUpdatePath = path.resolve(updatePath || '');
+    const expectedUpdatePath = path.resolve(downloadedUpdatePath);
+
+    if (resolvedUpdatePath !== expectedUpdatePath || path.dirname(resolvedUpdatePath) !== updateDir) {
+      return { error: 'Update file does not match the trusted download.' };
+    }
+
+    if (!fs.existsSync(resolvedUpdatePath)) {
+      return { error: 'Update file not found.' };
+    }
+
+    const updateStats = fs.lstatSync(resolvedUpdatePath);
+    if (updateStats.isSymbolicLink() || !updateStats.isFile()) {
+      return { error: 'Update file must be a regular file.' };
+    }
+
+    const currentSha256 = await computeFileSha256(resolvedUpdatePath);
+    if (currentSha256 !== downloadedUpdateSha256) {
+      return { error: 'Update file checksum no longer matches the trusted download.' };
+    }
+
     const currentExe = process.execPath;
     const currentDir = path.dirname(currentExe);
     const pid = process.pid;
@@ -247,34 +438,43 @@ async function installUpdate(updatePath) {
       const script = `
         $ErrorActionPreference = 'Stop'
         $procId = ${pid}
-        $zipPath = '${updatePath.replace(/'/g, "''")}'
+        $zipPath = '${resolvedUpdatePath.replace(/'/g, "''")}'
         $targetDir = '${currentDir.replace(/'/g, "''")}'
+        $tempDir = Join-Path ([System.IO.Path]::GetTempPath()) ("keepdir-update-" + [guid]::NewGuid().ToString("N"))
 
-        # Wait for app to exit
-        while (Get-Process -Id $procId -ErrorAction SilentlyContinue) {
-            Start-Sleep -Milliseconds 200
-        }
+        try {
+            New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
 
-        # Small delay to ensure file handles are released
-        Start-Sleep -Seconds 1
-
-        # Extract zip (overwrite existing files)
-        Expand-Archive -Path $zipPath -DestinationPath $targetDir -Force
-
-        # Find and start the new executable
-        $exePath = Join-Path $targetDir 'keepdir.exe'
-        if (Test-Path $exePath) {
-            Start-Process $exePath
-        } else {
-            # Try to find it in a subdirectory (in case zip has folder structure)
-            $exePath = Get-ChildItem -Path $targetDir -Name 'keepdir.exe' -Recurse | Select-Object -First 1
-            if ($exePath) {
-                Start-Process (Join-Path $targetDir $exePath)
+            # Wait for app to exit
+            while (Get-Process -Id $procId -ErrorAction SilentlyContinue) {
+                Start-Sleep -Milliseconds 200
             }
-        }
 
-        # Cleanup
-        Remove-Item $zipPath -Force -ErrorAction SilentlyContinue
+            # Small delay to ensure file handles are released
+            Start-Sleep -Seconds 1
+
+            # Extract to a temp directory first so both flat and nested archives install cleanly.
+            Expand-Archive -Path $zipPath -DestinationPath $tempDir -Force
+
+            $sourceExe = Get-ChildItem -Path $tempDir -Filter 'keepdir.exe' -File -Recurse | Select-Object -First 1
+            if (-not $sourceExe) {
+                throw 'Updated executable not found in archive.'
+            }
+
+            $sourceDir = Split-Path -Parent $sourceExe.FullName
+            Get-ChildItem -LiteralPath $sourceDir -Force | Copy-Item -Destination $targetDir -Recurse -Force
+
+            $exePath = Join-Path $targetDir 'keepdir.exe'
+            if (-not (Test-Path $exePath)) {
+                throw 'Updated executable was not installed.'
+            }
+            Start-Process $exePath
+        } finally {
+            if (Test-Path $tempDir) {
+                Remove-Item $tempDir -Recurse -Force -ErrorAction SilentlyContinue
+            }
+            Remove-Item $zipPath -Force -ErrorAction SilentlyContinue
+        }
       `;
 
       spawn('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', script], {
@@ -298,7 +498,7 @@ async function installUpdate(updatePath) {
 
       const script = `
         pid=${pid}
-        zipPath='${updatePath.replace(/'/g, "'\\''")}'
+        zipPath='${resolvedUpdatePath.replace(/'/g, "'\\''")}'
         appBundleDir='${appBundleDir.replace(/'/g, "'\\''")}'
         appBundleName='${appBundleName.replace(/'/g, "'\\''")}'
         appBundlePath='${appBundle.replace(/'/g, "'\\''")}'
@@ -381,5 +581,6 @@ module.exports = {
   installUpdate,
   cleanupUpdates,
   compareVersions,
-  normalizeVersion
+  normalizeVersion,
+  parseChecksumText
 };

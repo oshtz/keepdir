@@ -73,9 +73,6 @@ jest.mock('../contexts/WorkspaceContext', () => ({
     importWorkspace: jest.fn(),
     exportAllData: jest.fn(),
     importAllData: jest.fn(),
-    generateWorkspaceShareCode: jest.fn(),
-    importWorkspaceFromShareCode: jest.fn(),
-    cleanupExpiredShares: jest.fn(),
     getCustomSections: jest.fn(),
     createCustomSection: jest.fn(),
     updateCustomSection: jest.fn(),
@@ -100,6 +97,11 @@ const mockElectronAPI = {
   selectDirectory: jest.fn(),
   pullOllamaModel: jest.fn(),
   onOllamaModelPullProgress: jest.fn(() => jest.fn()),
+  getAppVersion: jest.fn(),
+  checkForUpdate: jest.fn(),
+  downloadUpdate: jest.fn(),
+  installUpdate: jest.fn(),
+  onUpdateDownloadProgress: jest.fn(() => jest.fn()),
 };
 
 Object.defineProperty(window, 'electronAPI', {
@@ -353,9 +355,6 @@ describe('App Advanced Functionality', () => {
           importWorkspace: jest.fn(),
           exportAllData: jest.fn(),
           importAllData: jest.fn(),
-          generateWorkspaceShareCode: jest.fn(),
-          importWorkspaceFromShareCode: jest.fn(),
-          cleanupExpiredShares: jest.fn(),
           getCustomSections: jest.fn(),
           createCustomSection: jest.fn(),
           updateCustomSection: jest.fn(),
@@ -819,6 +818,7 @@ describe('App Advanced Functionality', () => {
     });
 
     it('should handle model change with settings load error', async () => {
+      const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
       // First call succeeds for initial load, second fails for model change
       mockElectronAPI.loadSettings
         .mockResolvedValueOnce({
@@ -835,6 +835,8 @@ describe('App Advanced Functionality', () => {
       });
       
       expect(screen.getByTestId('workspace-provider')).toBeInTheDocument();
+      expect(consoleSpy).toHaveBeenCalledWith('Failed to load operation history:', expect.any(Error));
+      consoleSpy.mockRestore();
     });
   });
 

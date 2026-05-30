@@ -5,6 +5,40 @@ const axios = require('axios');
 const { spawn } = require('child_process');
 const Database = require('./database');
 const updater = require('./updater');
+const {
+  applyRenameSuggestions,
+  applySortSuggestions
+} = require('./fileOperations');
+const {
+  normalizeRenameSuggestions,
+  normalizeSortSuggestions
+} = require('./suggestionValidation');
+const {
+  assertNotSymbolicLink,
+  isAnalyzableDirectoryEntry,
+  normalizeCacheAgeHours,
+  normalizeOllamaModelName,
+  normalizeProviderName,
+  normalizeSelectedAnalysisEntries,
+  requireExistingDirectoryPath,
+  requireExistingFileOrDirectoryPath
+} = require('./ipcValidation');
+const {
+  normalizeImportOptions,
+  readJsonImportFile,
+  validateAllDataImport,
+  validateWorkspaceImportData
+} = require('./importValidation');
+const {
+  normalizeCustomSectionData,
+  normalizeCustomSectionItem,
+  normalizeCustomSectionUpdates,
+  normalizeRecordId,
+  normalizeSettingsPayload,
+  normalizeWorkspace,
+  normalizeWorkspaceId,
+  normalizeWorkspaceSettingRequest
+} = require('./stateValidation');
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (require('electron-squirrel-startup')) {
@@ -12,18 +46,40 @@ if (require('electron-squirrel-startup')) {
 }
 
 const isDev = process.env.NODE_ENV === 'development';
+const isVerboseLogging = isDev || process.env.KEEPDIR_DEBUG === '1';
+const debugLog = (...args) => {
+  if (isVerboseLogging) {
+    console.log(...args);
+  }
+};
+
+function normalizeAnalysisPath(filePath) {
+  return Buffer.from(filePath.replace(/\\/g, '/'), 'utf8')
+    .toString()
+    .normalize('NFC');
+}
 
 // Enable debug logging only in development
 if (isDev) {
   process.env.DEBUG = 'electron*';
-  console.log('Development mode:', isDev);
+  debugLog('Development mode:', isDev);
 }
 
 // Initialize database
 const db = new Database();
 
+function registerHandler(channel, handler) {
+  ipcMain.removeHandler(channel);
+  ipcMain.handle(channel, handler);
+}
+
+function registerListener(channel, listener) {
+  ipcMain.removeAllListeners(channel);
+  ipcMain.on(channel, listener);
+}
+
 // Database optimization handlers - Register at app level
-ipcMain.handle('get-cache-stats', async () => {
+registerHandler('get-cache-stats', async () => {
   try {
     const stats = await db.getCacheStats();
     return { success: true, stats };
@@ -33,7 +89,7 @@ ipcMain.handle('get-cache-stats', async () => {
   }
 });
 
-ipcMain.handle('get-database-stats', async () => {
+registerHandler('get-database-stats', async () => {
   try {
     const stats = await db.getDatabaseStats();
     return { success: true, stats };
@@ -43,9 +99,10 @@ ipcMain.handle('get-database-stats', async () => {
   }
 });
 
-ipcMain.handle('cleanup-cache', async (event, maxAgeHours = 168) => {
+registerHandler('cleanup-cache', async (event, maxAgeHours = 168) => {
   try {
-    await db.cleanupCache(maxAgeHours);
+    const normalizedMaxAgeHours = normalizeCacheAgeHours(maxAgeHours);
+    await db.cleanupCache(normalizedMaxAgeHours);
     return { success: true };
   } catch (error) {
     console.error('Failed to cleanup cache:', error);
@@ -53,7 +110,7 @@ ipcMain.handle('cleanup-cache', async (event, maxAgeHours = 168) => {
   }
 });
 
-ipcMain.handle('optimize-database', async () => {
+registerHandler('optimize-database', async () => {
   try {
     await db.optimizeDatabase();
     return { success: true };
@@ -63,28 +120,31 @@ ipcMain.handle('optimize-database', async () => {
   }
 });
 
-ipcMain.handle('get-provider-models', async (_event, providerName) => {
+registerHandler('get-provider-models', async (_event, providerName) => {
   try {
+    const normalizedProviderName = normalizeProviderName(providerName);
     const settings = await db.getAllSettings();
     const { getProvider } = require('./providers');
-    const provider = getProvider(providerName);
+    const provider = getProvider(normalizedProviderName);
 
     if (!provider) {
-      return { error: `Provider ${providerName} not found` };
+      return { error: `Provider ${normalizedProviderName} not found` };
     }
 
     const defaultModel = provider.defaultModel;
-    const apiKey = settings.apiKeys?.[providerName];
+    const apiKey = settings.apiKeys?.[normalizedProviderName];
     const displayNames = {
       openai: 'OpenAI',
       anthropic: 'Anthropic',
       google: 'Google',
-      ollama: 'Ollama'
+      ollama: 'Ollama',
+      openrouter: 'OpenRouter',
+      lmstudio: 'LM Studio'
     };
 
-    if (providerName !== 'ollama' && !apiKey) {
+    if (!['ollama', 'lmstudio'].includes(normalizedProviderName) && !apiKey) {
       return {
-        error: `Please configure your ${displayNames[providerName] || providerName} API key in settings`,
+        error: `Please configure your ${displayNames[normalizedProviderName] || normalizedProviderName} API key in settings`,
         defaultModel
       };
     }
@@ -98,7 +158,7 @@ ipcMain.handle('get-provider-models', async (_event, providerName) => {
 });
 
 function createWindow() {
-  console.log('Creating window...');
+  debugLog('Creating window...');
 
   // Create the browser window.
   const mainWindow = new BrowserWindow({
@@ -115,19 +175,19 @@ function createWindow() {
     },
   });
 
-  console.log('Window created');
+  debugLog('Window created');
 
   // Load from webpack dev server in development
   if (isDev) {
     const loadUrl = 'http://localhost:8081';
-    console.log('Loading from dev server:', loadUrl);
+    debugLog('Loading from dev server:', loadUrl);
     mainWindow.loadURL(loadUrl).catch(err => {
       console.error('Failed to load URL:', err);
     });
     mainWindow.webContents.openDevTools();
   } else {
     const filePath = path.join(__dirname, '../../dist/index.html');
-    console.log('Loading from file:', filePath);
+    debugLog('Loading from file:', filePath);
     mainWindow.loadFile(filePath).catch(err => {
       console.error('Failed to load file:', err);
     });
@@ -135,16 +195,16 @@ function createWindow() {
 
   // Show window when ready
   mainWindow.once('ready-to-show', () => {
-    console.log('Window ready to show');
+    debugLog('Window ready to show');
     mainWindow.show();
   });
 
   // Window control handlers
-  ipcMain.on('minimize-window', () => {
+  registerListener('minimize-window', () => {
     mainWindow.minimize();
   });
 
-  ipcMain.on('maximize-window', () => {
+  registerListener('maximize-window', () => {
     if (mainWindow.isMaximized()) {
       mainWindow.unmaximize();
     } else {
@@ -152,11 +212,11 @@ function createWindow() {
     }
   });
 
-  ipcMain.on('close-window', () => {
+  registerListener('close-window', () => {
     mainWindow.close();
   });
 
-  ipcMain.handle('select-directory', async () => {
+  registerHandler('select-directory', async () => {
     const result = await dialog.showOpenDialog(mainWindow, {
       properties: ['openDirectory']
     });
@@ -167,9 +227,13 @@ function createWindow() {
   });
 
   // Handler for opening files with system default application
-  ipcMain.handle('open-file', async (event, filePath) => {
+  registerHandler('open-file', async (event, filePath) => {
     try {
-      await require('electron').shell.openPath(filePath);
+      const safeFilePath = await requireExistingFileOrDirectoryPath(filePath, 'File path');
+      const openError = await shell.openPath(safeFilePath);
+      if (openError) {
+        return { error: openError };
+      }
       return { success: true };
     } catch (error) {
       console.error('Failed to open file:', error);
@@ -178,9 +242,10 @@ function createWindow() {
   });
 
   // Reveal item in OS file explorer
-  ipcMain.handle('reveal-in-folder', async (_event, filePath) => {
+  registerHandler('reveal-in-folder', async (_event, filePath) => {
     try {
-      shell.showItemInFolder(filePath);
+      const safeFilePath = await requireExistingFileOrDirectoryPath(filePath, 'File path');
+      shell.showItemInFolder(safeFilePath);
       return { success: true };
     } catch (error) {
       console.error('Failed to reveal in folder:', error);
@@ -188,13 +253,14 @@ function createWindow() {
     }
   });
 
-  ipcMain.handle('load-directory', async (event, directoryPath) => {
-    console.log(`Loading directory: ${directoryPath}`);
+  registerHandler('load-directory', async (event, directoryPath) => {
     try {
-      const items = await fs.readdir(directoryPath, { withFileTypes: true });
+      const safeDirectoryPath = await requireExistingDirectoryPath(directoryPath);
+      debugLog(`Loading directory: ${safeDirectoryPath}`);
+      const items = await fs.readdir(safeDirectoryPath, { withFileTypes: true });
       const files = await Promise.all(items.map(async (item) => {
-        const fullPath = path.join(directoryPath, item.name);
-        const stats = await fs.stat(fullPath);
+        const fullPath = path.join(safeDirectoryPath, item.name);
+        const stats = await fs.lstat(fullPath);
         return {
           name: item.name,
           path: fullPath,
@@ -221,9 +287,10 @@ function createWindow() {
   });
 
   // Ollama model pull handler
-  ipcMain.handle('pull-ollama-model', async (event, modelName) => {
+  registerHandler('pull-ollama-model', async (event, modelName) => {
+    const safeModelName = normalizeOllamaModelName(modelName);
     return new Promise((resolve, reject) => {
-      const ollamaProcess = spawn('ollama', ['pull', modelName]);
+      const ollamaProcess = spawn('ollama', ['pull', safeModelName]);
       let error = '';
 
       ollamaProcess.stdout.on('data', (data) => {
@@ -257,7 +324,7 @@ function createWindow() {
     });
   });
 
-  ipcMain.handle('list-ollama-models', async () => {
+  registerHandler('list-ollama-models', async () => {
     try {
       const response = await axios.get('http://localhost:11434/api/tags', {
         timeout: 2000
@@ -272,13 +339,16 @@ function createWindow() {
     }
   });
 
-  ipcMain.handle('delete-ollama-model', async (_event, modelName) => {
-    if (!modelName) {
-      return { error: 'Model name is required.' };
+  registerHandler('delete-ollama-model', async (_event, modelName) => {
+    let safeModelName;
+    try {
+      safeModelName = normalizeOllamaModelName(modelName);
+    } catch (error) {
+      return { error: error.message };
     }
 
     return new Promise((resolve) => {
-      const ollamaProcess = spawn('ollama', ['rm', modelName]);
+      const ollamaProcess = spawn('ollama', ['rm', safeModelName]);
       let error = '';
 
       ollamaProcess.stderr.on('data', (data) => {
@@ -303,11 +373,11 @@ function createWindow() {
 
   // Log console messages from renderer
   mainWindow.webContents.on('console-message', (event, level, message) => {
-    console.log('Renderer Console:', message);
+    debugLog('Renderer Console:', message);
   });
 
   // Workspace handlers
-  ipcMain.handle('get-workspaces', async () => {
+  registerHandler('get-workspaces', async () => {
     try {
       const workspaces = await db.getWorkspaces();
       return workspaces;
@@ -317,9 +387,10 @@ function createWindow() {
     }
   });
 
-  ipcMain.handle('save-workspace', async (event, workspace) => {
+  registerHandler('save-workspace', async (event, workspace) => {
     try {
-      await db.saveWorkspace(workspace);
+      const normalizedWorkspace = normalizeWorkspace(workspace);
+      await db.saveWorkspace(normalizedWorkspace);
       return { success: true };
     } catch (error) {
       console.error('Failed to save workspace:', error);
@@ -327,9 +398,10 @@ function createWindow() {
     }
   });
 
-  ipcMain.handle('delete-workspace', async (event, id) => {
+  registerHandler('delete-workspace', async (event, id) => {
     try {
-      await db.deleteWorkspace(id);
+      const workspaceId = normalizeWorkspaceId(id);
+      await db.deleteWorkspace(workspaceId);
       return { success: true };
     } catch (error) {
       console.error('Failed to delete workspace:', error);
@@ -338,9 +410,10 @@ function createWindow() {
   });
 
   // Workspace settings handlers
-  ipcMain.handle('get-workspace-settings', async (event, workspaceId) => {
+  registerHandler('get-workspace-settings', async (event, workspaceId) => {
     try {
-      const settings = await db.getWorkspaceSettings(workspaceId);
+      const normalizedWorkspaceId = normalizeWorkspaceId(workspaceId);
+      const settings = await db.getWorkspaceSettings(normalizedWorkspaceId);
       return settings;
     } catch (error) {
       console.error('Failed to get workspace settings:', error);
@@ -348,8 +421,9 @@ function createWindow() {
     }
   });
 
-  ipcMain.handle('get-workspace-setting', async (event, { workspaceId, key }) => {
+  registerHandler('get-workspace-setting', async (event, payload = {}) => {
     try {
+      const { workspaceId, key } = normalizeWorkspaceSettingRequest(payload);
       const value = await db.getWorkspaceSetting(workspaceId, key);
       return value;
     } catch (error) {
@@ -358,8 +432,11 @@ function createWindow() {
     }
   });
 
-  ipcMain.handle('save-workspace-setting', async (event, { workspaceId, key, value }) => {
+  registerHandler('save-workspace-setting', async (event, payload = {}) => {
     try {
+      const { workspaceId, key, value } = normalizeWorkspaceSettingRequest(payload, {
+        requireValue: true
+      });
       await db.saveWorkspaceSetting(workspaceId, key, value);
       return { success: true };
     } catch (error) {
@@ -369,9 +446,10 @@ function createWindow() {
   });
 
   // Settings handlers
-  ipcMain.handle('save-settings', async (event, settings) => {
+  registerHandler('save-settings', async (event, settings) => {
     try {
-      await db.saveSettings(settings);
+      const normalizedSettings = normalizeSettingsPayload(settings);
+      await db.saveSettings(normalizedSettings);
       return { success: true };
     } catch (error) {
       console.error('Failed to save settings:', error);
@@ -379,7 +457,7 @@ function createWindow() {
     }
   });
 
-  ipcMain.handle('load-settings', async () => {
+  registerHandler('load-settings', async () => {
     try {
       // Try to load settings from database
       const settings = await db.getAllSettings();
@@ -393,7 +471,7 @@ function createWindow() {
       try {
         const settingsPath = path.join(app.getPath('userData'), 'settings.json');
         const data = await fs.readFile(settingsPath, 'utf8');
-        const jsonSettings = JSON.parse(data);
+        const jsonSettings = normalizeSettingsPayload(JSON.parse(data));
 
         // Save migrated settings to database
         await db.saveSettings(jsonSettings);
@@ -424,9 +502,10 @@ function createWindow() {
   });
 
   // Workspace export/import handlers
-  ipcMain.handle('export-workspace', async (event, workspaceId) => {
+  registerHandler('export-workspace', async (event, workspaceId) => {
     try {
-      const exportData = await db.exportWorkspace(workspaceId);
+      const normalizedWorkspaceId = normalizeWorkspaceId(workspaceId);
+      const exportData = await db.exportWorkspace(normalizedWorkspaceId);
 
       // Show save dialog
       const result = await dialog.showSaveDialog(mainWindow, {
@@ -450,8 +529,10 @@ function createWindow() {
     }
   });
 
-  ipcMain.handle('import-workspace', async (event, options = {}) => {
+  registerHandler('import-workspace', async (event, options = {}) => {
     try {
+      const importOptions = normalizeImportOptions(options);
+
       // Show open dialog
       const result = await dialog.showOpenDialog(mainWindow, {
         title: 'Import Workspace',
@@ -467,15 +548,8 @@ function createWindow() {
       }
 
       const filePath = result.filePaths[0];
-      const fileContent = await fs.readFile(filePath, 'utf8');
-      const workspaceData = JSON.parse(fileContent);
-
-      // Validate workspace data structure
-      if (!workspaceData.workspace || !workspaceData.version) {
-        throw new Error('Invalid workspace file format');
-      }
-
-      const importResult = await db.importWorkspace(workspaceData, options);
+      const workspaceData = validateWorkspaceImportData(await readJsonImportFile(filePath));
+      const importResult = await db.importWorkspace(workspaceData, importOptions);
       return importResult;
     } catch (error) {
       console.error('Failed to import workspace:', error);
@@ -483,7 +557,7 @@ function createWindow() {
     }
   });
 
-  ipcMain.handle('export-all-data', async (event) => {
+  registerHandler('export-all-data', async (event) => {
     try {
       const exportData = await db.exportAllData();
 
@@ -509,8 +583,10 @@ function createWindow() {
     }
   });
 
-  ipcMain.handle('import-all-data', async (event, options = {}) => {
+  registerHandler('import-all-data', async (event, options = {}) => {
     try {
+      const importOptions = normalizeImportOptions(options);
+
       // Show open dialog
       const result = await dialog.showOpenDialog(mainWindow, {
         title: 'Import All Data (Restore Backup)',
@@ -526,15 +602,8 @@ function createWindow() {
       }
 
       const filePath = result.filePaths[0];
-      const fileContent = await fs.readFile(filePath, 'utf8');
-      const backupData = JSON.parse(fileContent);
-
-      // Validate backup data structure
-      if (!backupData.version || !backupData.exportedAt) {
-        throw new Error('Invalid backup file format');
-      }
-
-      const importResult = await db.importAllData(backupData, options);
+      const backupData = validateAllDataImport(await readJsonImportFile(filePath));
+      const importResult = await db.importAllData(backupData, importOptions);
       return importResult;
     } catch (error) {
       console.error('Failed to import all data:', error);
@@ -543,9 +612,10 @@ function createWindow() {
   });
 
   // Custom sections handlers
-  ipcMain.handle('get-custom-sections', async (event, workspaceId) => {
+  registerHandler('get-custom-sections', async (event, workspaceId) => {
     try {
-      const sections = await db.getCustomSections(workspaceId);
+      const normalizedWorkspaceId = normalizeWorkspaceId(workspaceId);
+      const sections = await db.getCustomSections(normalizedWorkspaceId);
       return { success: true, sections };
     } catch (error) {
       console.error('Failed to get custom sections:', error);
@@ -553,9 +623,11 @@ function createWindow() {
     }
   });
 
-  ipcMain.handle('create-custom-section', async (event, workspaceId, sectionData) => {
+  registerHandler('create-custom-section', async (event, workspaceId, sectionData) => {
     try {
-      const section = await db.createCustomSection(workspaceId, sectionData);
+      const normalizedWorkspaceId = normalizeWorkspaceId(workspaceId);
+      const normalizedSectionData = normalizeCustomSectionData(sectionData);
+      const section = await db.createCustomSection(normalizedWorkspaceId, normalizedSectionData);
       return { success: true, section };
     } catch (error) {
       console.error('Failed to create custom section:', error);
@@ -563,9 +635,11 @@ function createWindow() {
     }
   });
 
-  ipcMain.handle('update-custom-section', async (event, sectionId, updates) => {
+  registerHandler('update-custom-section', async (event, sectionId, updates) => {
     try {
-      await db.updateCustomSection(sectionId, updates);
+      const normalizedSectionId = normalizeRecordId(sectionId, 'Custom section id');
+      const normalizedUpdates = normalizeCustomSectionUpdates(updates);
+      await db.updateCustomSection(normalizedSectionId, normalizedUpdates);
       return { success: true };
     } catch (error) {
       console.error('Failed to update custom section:', error);
@@ -573,9 +647,10 @@ function createWindow() {
     }
   });
 
-  ipcMain.handle('delete-custom-section', async (event, sectionId) => {
+  registerHandler('delete-custom-section', async (event, sectionId) => {
     try {
-      await db.deleteCustomSection(sectionId);
+      const normalizedSectionId = normalizeRecordId(sectionId, 'Custom section id');
+      await db.deleteCustomSection(normalizedSectionId);
       return { success: true };
     } catch (error) {
       console.error('Failed to delete custom section:', error);
@@ -583,9 +658,11 @@ function createWindow() {
     }
   });
 
-  ipcMain.handle('add-item-to-custom-section', async (event, sectionId, item) => {
+  registerHandler('add-item-to-custom-section', async (event, sectionId, item) => {
     try {
-      const items = await db.addItemToCustomSection(sectionId, item);
+      const normalizedSectionId = normalizeRecordId(sectionId, 'Custom section id');
+      const normalizedItem = normalizeCustomSectionItem(item);
+      const items = await db.addItemToCustomSection(normalizedSectionId, normalizedItem);
       return { success: true, items };
     } catch (error) {
       console.error('Failed to add item to custom section:', error);
@@ -593,9 +670,11 @@ function createWindow() {
     }
   });
 
-  ipcMain.handle('remove-item-from-custom-section', async (event, sectionId, itemId) => {
+  registerHandler('remove-item-from-custom-section', async (event, sectionId, itemId) => {
     try {
-      const items = await db.removeItemFromCustomSection(sectionId, itemId);
+      const normalizedSectionId = normalizeRecordId(sectionId, 'Custom section id');
+      const normalizedItemId = normalizeRecordId(itemId, 'Custom section item id');
+      const items = await db.removeItemFromCustomSection(normalizedSectionId, normalizedItemId);
       return { success: true, items };
     } catch (error) {
       console.error('Failed to remove item from custom section:', error);
@@ -605,54 +684,60 @@ function createWindow() {
 
 
   // Register IPC handlers for file analysis
-  ipcMain.handle('analyze-directory-for-sort', async (event, directoryPath, selectedPaths) => {
+  registerHandler('analyze-directory-for-sort', async (event, directoryPath, selectedPaths) => {
     return analyzeDirectory(event.sender, directoryPath, false, selectedPaths);
   });
 
-  ipcMain.handle('analyze-directory-for-rename', async (event, directoryPath, selectedPaths) => {
+  registerHandler('analyze-directory-for-rename', async (event, directoryPath, selectedPaths) => {
     return analyzeDirectory(event.sender, directoryPath, true, selectedPaths);
   });
 
   // Register IPC handlers for fresh analysis (bypassing cache)
-  ipcMain.handle('analyze-directory-for-sort-fresh', async (event, directoryPath, selectedPaths) => {
+  registerHandler('analyze-directory-for-sort-fresh', async (event, directoryPath, selectedPaths) => {
     return analyzeDirectory(event.sender, directoryPath, false, selectedPaths, true);
   });
 
-  ipcMain.handle('analyze-directory-for-rename-fresh', async (event, directoryPath, selectedPaths) => {
+  registerHandler('analyze-directory-for-rename-fresh', async (event, directoryPath, selectedPaths) => {
     return analyzeDirectory(event.sender, directoryPath, true, selectedPaths, true);
   });
 
   // AI File Analysis handlers with caching
   async function analyzeDirectory(sender, directoryPath, renameFiles, selectedPaths, forceRefresh = false) {
     try {
-      const files = await fs.readdir(directoryPath, { withFileTypes: true });
-      let allFiles;
+      directoryPath = await requireExistingDirectoryPath(directoryPath);
+      const selectedFileEntries = await normalizeSelectedAnalysisEntries(selectedPaths, directoryPath);
 
-      if (selectedPaths && selectedPaths.length > 0) {
-        // If selectedPaths is provided, only process those files
-        allFiles = selectedPaths.map(filePath => path.basename(filePath));
+      let allFileEntries;
+
+      if (selectedFileEntries && selectedFileEntries.length > 0) {
+        // If selectedPaths is provided, only process those validated direct-child files.
+        allFileEntries = selectedFileEntries;
       } else {
         // Otherwise process all non-directory files
-        allFiles = files
-          .filter(file => !file.isDirectory())
-          .map(file => file.name);
+        const files = await fs.readdir(directoryPath, { withFileTypes: true });
+        allFileEntries = files
+          .filter(isAnalyzableDirectoryEntry)
+          .map(file => ({
+            name: file.name,
+            path: path.join(directoryPath, file.name)
+          }));
       }
 
-      // Get list of unprocessed files with proper encoding
-      const filePaths = allFiles.map(name => {
-        // Ensure proper encoding of Hebrew characters in path
-        const encodedName = Buffer.from(name, 'utf8').toString();
-        return path.join(directoryPath, encodedName);
-      });
+      const filePaths = allFileEntries.map(entry => entry.path);
+      const fileEntryByPath = new Map(
+        allFileEntries.map(entry => [normalizeAnalysisPath(entry.path), entry])
+      );
 
       // Use the appropriate unprocessed files method based on operation
       const unprocessedPaths = renameFiles
         ? await db.getUnprocessedRenames(filePaths)
         : await db.getUnprocessedSorts(filePaths);
-      const unprocessedFiles = unprocessedPaths.map(p => Buffer.from(path.basename(p), 'utf8').toString());
+      const unprocessedEntries = unprocessedPaths
+        .map(filePath => fileEntryByPath.get(normalizeAnalysisPath(filePath)))
+        .filter(Boolean);
 
       // If all files are processed and not forcing refresh, return cached suggestions
-      if (unprocessedFiles.length === 0 && !forceRefresh) {
+      if (unprocessedEntries.length === 0 && !forceRefresh) {
         const cachedResults = await Promise.all(
           filePaths.map(async (filePath) => {
             const processed = renameFiles
@@ -707,7 +792,8 @@ function createWindow() {
       }
 
       // If forcing refresh, analyze all files regardless of cache status
-      const fileNames = forceRefresh ? allFiles.slice(0, 50) : unprocessedFiles.slice(0, 50);
+      const fileEntries = forceRefresh ? allFileEntries.slice(0, 50) : unprocessedEntries.slice(0, 50);
+      const fileNames = fileEntries.map(entry => entry.name);
 
       // Process files in smaller batches for API calls
       const BATCH_SIZE = 10;
@@ -715,11 +801,11 @@ function createWindow() {
 
       // Get settings from database
       const settings = await db.getAllSettings();
-      const provider = settings.selectedProvider || 'openai';
+      const provider = normalizeProviderName(settings.selectedProvider || 'openai');
       const apiKey = settings.apiKeys?.[provider];
 
       // Ollama doesn't require an API key since it runs locally
-      if (!apiKey && provider !== 'ollama') {
+      if (!apiKey && !['ollama', 'lmstudio'].includes(provider)) {
         return { error: `${provider} API key not configured` };
       }
 
@@ -752,6 +838,9 @@ function createWindow() {
         }
         if (providerName === 'google') {
           return normalized.startsWith('gemini');
+        }
+        if (providerName === 'openrouter' || providerName === 'lmstudio') {
+          return true;
         }
         return false;
       };
@@ -842,7 +931,7 @@ function createWindow() {
         return { buffer: output, mimeType };
       };
 
-      const hasRenameImages = renameFiles && fileNames.some(name => imageFilePattern.test(name));
+      const hasRenameImages = renameFiles && fileEntries.some(entry => imageFilePattern.test(entry.name));
       if (hasRenameImages && !selectedProvider.supportsVision) {
         return { error: `${provider} does not support image inputs for rename suggestions.` };
       }
@@ -854,31 +943,31 @@ function createWindow() {
 
       // Process files in batches with progress updates
       for (let i = 0; i < fileNames.length; i += BATCH_SIZE) {
-        const batchFiles = fileNames.slice(i, i + BATCH_SIZE);
+        const batchFiles = fileEntries.slice(i, i + BATCH_SIZE);
 
         // Send analyze progress update
         sender.send('analyze-progress', {
           current: i,
           total: fileNames.length,
           status: 'Analyzing files...',
-          currentFile: batchFiles[0]
+          currentFile: batchFiles[0]?.name || null
         });
 
         // Get file details for the batch
-        const fileDetails = await Promise.all(batchFiles.map(async (fileName) => {
-          const filePath = path.join(directoryPath, fileName);
-          const stats = await fs.stat(filePath);
+        const fileDetails = await Promise.all(batchFiles.map(async ({ name: fileName, path: filePath }) => {
+          const stats = await fs.lstat(filePath);
+          assertNotSymbolicLink(stats, `Selected item ${fileName}`);
           let base64Content = '';
           let imageMimeType = '';
           let isImageFile = false;
 
           // Only process images and optimize image loading
           const imageMimeTypeFromName = renameFiles ? getImageMimeType(fileName) : null;
-          isImageFile = !!imageMimeTypeFromName;
+          isImageFile = stats.isFile() && !!imageMimeTypeFromName;
 
           if (isImageFile) {
             try {
-              const fileHash = db.getFileHash(filePath);
+              const fileHash = await db.getFileHash(filePath);
               const isCached = await db.isFileCached(filePath, fileHash);
 
               if (isCached) {
@@ -902,7 +991,7 @@ function createWindow() {
                 );
               }
             } catch (error) {
-              console.log(`Could not process image file ${fileName}:`, error);
+              debugLog(`Could not process image file ${fileName}:`, error);
             }
           }
 
@@ -993,16 +1082,29 @@ function createWindow() {
         }
 
         // Merge batch results
-        if (renameFiles && batchSuggestions.renames) {
-          allSuggestions.renames.push(...batchSuggestions.renames);
-        } else if (!renameFiles && batchSuggestions.categories) {
+        if (renameFiles) {
+          const batchRenames = Array.isArray(batchSuggestions?.renames) ? batchSuggestions.renames : [];
+          allSuggestions.renames.push(...batchRenames);
+        } else {
           // Merge categories intelligently
-          batchSuggestions.categories.forEach(newCat => {
-            const existingCat = allSuggestions.categories.find(c => c.name === newCat.name);
+          const batchCategories = Array.isArray(batchSuggestions?.categories) ? batchSuggestions.categories : [];
+          batchCategories.forEach(newCat => {
+            if (!newCat || typeof newCat !== 'object') {
+              return;
+            }
+
+            const categoryName = typeof newCat.name === 'string' ? newCat.name : '';
+            const categoryFiles = Array.isArray(newCat.files) ? newCat.files : [];
+            const normalizedCategory = {
+              ...newCat,
+              name: categoryName,
+              files: categoryFiles
+            };
+            const existingCat = allSuggestions.categories.find(c => c.name === categoryName);
             if (existingCat) {
-              existingCat.files.push(...newCat.files);
+              existingCat.files.push(...categoryFiles);
             } else {
-              allSuggestions.categories.push(newCat);
+              allSuggestions.categories.push(normalizedCategory);
             }
           });
         }
@@ -1013,7 +1115,9 @@ function createWindow() {
         }
       }
 
-      const suggestions = allSuggestions;
+      const suggestions = renameFiles
+        ? normalizeRenameSuggestions(allSuggestions, fileNames)
+        : normalizeSortSuggestions(allSuggestions, fileNames, directoryPath);
 
       if (renameFiles) {
         if (!suggestions.renames?.length) {
@@ -1065,249 +1169,42 @@ function createWindow() {
   }
 
   // Handler for applying suggestions with batch processing
-  ipcMain.handle('apply-suggestions', async (event, { directoryPath, suggestions }) => {
+  registerHandler('apply-suggestions', async (event, payload = {}) => {
     try {
-      // Process files in batches of 100
-      const BATCH_SIZE = 100;
-      const allMoves = suggestions.categories.flatMap(category => {
-        const categoryPath = path.join(directoryPath, category.suggestedPath);
-        return category.files.map(file => ({
-          oldPath: path.join(directoryPath, file),
-          newPath: path.join(categoryPath, file),
-          categoryPath
-        }));
+      const directoryPath = await requireExistingDirectoryPath(payload.directoryPath);
+      return applySortSuggestions({
+        directoryPath,
+        suggestions: payload.suggestions,
+        db,
+        onProgress: (channel, progressPayload) => event.sender.send(channel, progressPayload)
       });
-
-      let processed = 0;
-      // Process moves in batches with progress updates
-      for (let i = 0; i < allMoves.length; i += BATCH_SIZE) {
-        const batch = allMoves.slice(i, i + BATCH_SIZE);
-
-        event.sender.send('sort-progress', {
-          current: processed,
-          total: allMoves.length,
-          status: 'Moving files...',
-          currentFile: path.basename(batch[0].oldPath)
-        });
-
-        // Create all required directories first
-        const uniqueDirs = new Set(batch.map(move => move.categoryPath));
-        await Promise.all(Array.from(uniqueDirs).map(dir =>
-          fs.mkdir(dir, { recursive: true })
-        ));
-
-        // Process moves in parallel within the batch
-        await Promise.all(batch.map(async ({ oldPath, newPath }) => {
-          try {
-            await fs.rename(oldPath, newPath);
-            await db.markFileSorted(oldPath, newPath);
-            processed++;
-            event.sender.send('sort-progress', {
-              current: processed,
-              total: allMoves.length,
-              status: 'Moving files...',
-              currentFile: path.basename(newPath)
-            });
-          } catch (err) {
-            console.error(`Failed to move file ${oldPath}:`, err);
-            await db.markSortSkipped(oldPath);
-          }
-        }));
-      }
-
-      return { success: true };
     } catch (error) {
-      console.error('Failed to apply suggestions:', error);
-      return { error: error.message };
+      return {
+        success: false,
+        partial: false,
+        movedFiles: [],
+        errors: [{ file: 'unknown', error: error.message }],
+        error: error.message
+      };
     }
   });
 
-  /**
-   * Sanitize filename to remove problematic characters
-   */
-  function sanitizeFilename(filename) {
-    // Replace problematic characters with safe alternatives
-    return filename
-      .replace(/[<>:"\/\\|?*\x00-\x1F]/g, '-') // Replace invalid Windows filename chars
-      .replace(/[\u0591-\u05F4]/g, '') // Remove Hebrew diacritics
-      .replace(/\s+/g, '-') // Replace spaces with hyphens
-      .replace(/--+/g, '-') // Replace multiple hyphens with single hyphen
-      .trim(); // Remove leading/trailing spaces
-  }
-
   // Handler for applying renames with batch processing
-  ipcMain.handle('apply-renames', async (event, { directoryPath, suggestions }) => {
-    const results = {
-      success: true,
-      errors: [],
-      renamedFiles: []
-    };
-
+  registerHandler('apply-renames', async (event, payload = {}) => {
     try {
-      // Process renames in batches of 100
-      const BATCH_SIZE = 100;
-      const allRenames = suggestions.categories.flatMap(category => category.renames);
-      let processed = 0;
-
-      for (let i = 0; i < allRenames.length; i += BATCH_SIZE) {
-        const batch = allRenames.slice(i, i + BATCH_SIZE);
-
-        event.sender.send('rename-progress', {
-          current: processed,
-          total: allRenames.length,
-          status: 'Renaming files...',
-          currentFile: batch[0].originalName
-        });
-
-        // Process batch in parallel
-        await Promise.all(batch.map(async (rename) => {
-          // Ensure proper encoding of file paths
-          const originalName = Buffer.from(rename.originalName, 'utf8').toString();
-          const oldPath = path.join(directoryPath, originalName);
-
-          // Sanitize the suggested name while keeping the extension
-          const ext = path.extname(rename.suggestedName);
-          const baseName = path.basename(rename.suggestedName, ext);
-          const sanitizedName = sanitizeFilename(baseName) + ext;
-          const newPath = path.join(directoryPath, sanitizedName);
-
-          try {
-            // Check if source file exists using readdir to get exact filename
-            const dirContents = await fs.readdir(directoryPath);
-
-            // Debug logging
-            console.log('Directory contents:', dirContents);
-            console.log('Looking for file:', originalName);
-
-            // Debug encoding information
-            console.log('Original filename buffer:', Buffer.from(originalName).toString('hex'));
-            console.log('Directory contents with encoding info:', dirContents.map(f => ({
-              name: f,
-              hex: Buffer.from(f).toString('hex')
-            })));
-
-            // Try different matching strategies
-            let exactFileName = null;
-
-            // 1. Direct match
-            exactFileName = dirContents.find(f => f === originalName);
-            if (exactFileName) {
-              console.log('Found direct match:', exactFileName);
-            }
-
-            // 2. Normalized match
-            if (!exactFileName) {
-              const normalizedOriginal = originalName.normalize('NFC');
-              exactFileName = dirContents.find(f => {
-                const normalizedCurrent = f.normalize('NFC');
-                const match = normalizedCurrent === normalizedOriginal;
-                console.log(`Normalized comparison: "${normalizedCurrent}" with "${normalizedOriginal}": ${match}`);
-                return match;
-              });
-              if (exactFileName) {
-                console.log('Found normalized match:', exactFileName);
-              }
-            }
-
-            // 3. Case-insensitive match
-            if (!exactFileName) {
-              exactFileName = dirContents.find(f =>
-                f.toLowerCase() === originalName.toLowerCase()
-              );
-              if (exactFileName) {
-                console.log('Found case-insensitive match:', exactFileName);
-              }
-            }
-
-            // 4. Partial match for Hebrew filenames
-            if (!exactFileName) {
-              exactFileName = dirContents.find(f => {
-                // Remove common prefixes that might be added by apps
-                const cleanF = f.replace(/^תמונה של /, '');
-                const cleanOriginal = originalName.replace(/^תמונה של /, '');
-                const match = cleanF === cleanOriginal;
-                console.log(`Partial match attempt: "${cleanF}" with "${cleanOriginal}": ${match}`);
-                return match;
-              });
-              if (exactFileName) {
-                console.log('Found partial match:', exactFileName);
-              }
-            }
-
-            if (!exactFileName) {
-              throw new Error(`Source file not found: ${originalName} (available files: ${dirContents.join(', ')})`);
-            }
-
-            const exactPath = path.join(directoryPath, exactFileName);
-            console.log('Using exact path:', exactPath);
-
-            // Check if destination already exists
-            try {
-              await fs.access(newPath);
-              // If file exists, append number to filename
-              let counter = 1;
-              let uniquePath = newPath;
-              while (true) {
-                try {
-                  uniquePath = path.join(
-                    directoryPath,
-                    `${sanitizeFilename(baseName)}-${counter}${ext}`
-                  );
-                  await fs.access(uniquePath);
-                  counter++;
-                } catch {
-                  // File doesn't exist, we can use this name
-                  break;
-                }
-              }
-              newPath = uniquePath;
-            } catch {
-              // Destination doesn't exist, we can proceed
-            }
-
-            // Perform the rename using exact path
-            await fs.rename(exactPath, newPath);
-
-            // Only update database if rename was successful
-            await db.markFileRenamed(oldPath, newPath);
-
-            processed++;
-            event.sender.send('rename-progress', {
-              current: processed,
-              total: allRenames.length,
-              status: 'Renaming files...',
-              currentFile: rename.originalName
-            });
-
-            results.renamedFiles.push({
-              original: rename.originalName,
-              new: path.basename(newPath)
-            });
-          } catch (err) {
-            console.error(`Failed to rename file ${rename.originalName}:`, err);
-
-            // Mark file as skipped if it fails to rename
-            try {
-              await db.markRenameSkipped(oldPath);
-              console.log(`Marked file as skipped: ${rename.originalName}`);
-            } catch (skipErr) {
-              console.error(`Failed to mark file as skipped: ${skipErr}`);
-            }
-
-            results.errors.push({
-              file: rename.originalName,
-              error: err.message
-            });
-            results.success = false;
-          }
-        }));
-      }
-      return results;
+      const directoryPath = await requireExistingDirectoryPath(payload.directoryPath);
+      return applyRenameSuggestions({
+        directoryPath,
+        suggestions: payload.suggestions,
+        db,
+        onProgress: (channel, progressPayload) => event.sender.send(channel, progressPayload)
+      });
     } catch (error) {
-      console.error('Failed to apply renames:', error);
       return {
         success: false,
+        partial: false,
         error: error.message,
+        renamedFiles: [],
         errors: [{
           file: 'unknown',
           error: error.message
@@ -1317,19 +1214,19 @@ function createWindow() {
   });
 
   // Auto-update handlers
-  ipcMain.handle('get-app-version', () => {
+  registerHandler('get-app-version', () => {
     return app.getVersion();
   });
 
-  ipcMain.handle('check-for-update', async () => {
+  registerHandler('check-for-update', async () => {
     return await updater.checkForUpdate(mainWindow);
   });
 
-  ipcMain.handle('download-update', async (event, updateInfo) => {
+  registerHandler('download-update', async (event, updateInfo) => {
     return await updater.downloadUpdate(updateInfo, mainWindow);
   });
 
-  ipcMain.handle('install-update', async (event, updatePath) => {
+  registerHandler('install-update', async (event, updatePath) => {
     return await updater.installUpdate(updatePath);
   });
 
@@ -1339,13 +1236,13 @@ function createWindow() {
 
 // This method will be called when Electron has finished initialization
 if (app) {
-  console.log('App exists');
+  debugLog('App exists');
   app.whenReady().then(() => {
-    console.log('App ready');
+    debugLog('App ready');
     createWindow();
 
     app.on('activate', () => {
-      console.log('App activated');
+      debugLog('App activated');
       if (BrowserWindow.getAllWindows().length === 0) {
         createWindow();
       }
@@ -1356,7 +1253,7 @@ if (app) {
 
   // Quit when all windows are closed
   app.on('window-all-closed', () => {
-    console.log('All windows closed');
+    debugLog('All windows closed');
     if (process.platform !== 'darwin') {
       app.quit();
     }

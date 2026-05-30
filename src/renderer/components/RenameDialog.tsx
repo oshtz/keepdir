@@ -48,6 +48,8 @@ interface RenameDialogProps {
   selectedFiles?: string[]; // For template-based renaming
 }
 
+const EMPTY_SELECTED_FILES: string[] = [];
+
 const RenameDialog: React.FC<RenameDialogProps> = ({
   open,
   onClose,
@@ -56,7 +58,7 @@ const RenameDialog: React.FC<RenameDialogProps> = ({
   error,
   onApply,
   onRefresh,
-  selectedFiles = [],
+  selectedFiles = EMPTY_SELECTED_FILES,
 }) => {
   const theme = useTheme();
   const [progress, setProgress] = useState<{
@@ -81,7 +83,7 @@ const RenameDialog: React.FC<RenameDialogProps> = ({
       const preview = applyTemplate(selectedTemplate, selectedFiles);
       setTemplatePreview(preview);
     } else {
-      setTemplatePreview([]);
+      setTemplatePreview(prev => (prev.length === 0 ? prev : []));
     }
   }, [selectedTemplate, selectedFiles]);
 
@@ -168,6 +170,7 @@ const handleApply = () => {
       maxWidth="md"
       fullWidth
       PaperProps={{
+        tabIndex: -1,
         sx: {
           borderRadius: 1.5,
           background: theme.palette.background.default,

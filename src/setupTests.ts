@@ -1,5 +1,52 @@
 import '@testing-library/jest-dom';
 
+(globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
+(global as any).IS_REACT_ACT_ENVIRONMENT = true;
+(window as any).IS_REACT_ACT_ENVIRONMENT = true;
+
+jest.mock('react-transition-group', () => {
+  const React = require('react');
+
+  const renderTransitionChildren = (children: any, inProp: boolean) => {
+    const state = inProp ? 'entered' : 'exited';
+    return typeof children === 'function' ? children(state, {}) : children;
+  };
+
+  const Transition = ({ children, in: inProp = true, unmountOnExit }: any) => {
+    if (!inProp && unmountOnExit) {
+      return null;
+    }
+    return renderTransitionChildren(children, inProp);
+  };
+
+  const TransitionGroup = ({ children }: any) => React.createElement(React.Fragment, null, children);
+
+  return {
+    __esModule: true,
+    Transition,
+    CSSTransition: Transition,
+    SwitchTransition: TransitionGroup,
+    TransitionGroup,
+    config: { disabled: true },
+  };
+});
+
+const originalConsoleError = console.error.bind(console);
+console.error = (...args: unknown[]) => {
+  const message = String(args[0] ?? '');
+  if (
+    message.includes('MUI: The modal content node does not accept focus.') ||
+    message.includes('The current testing environment is not configured to support act(...)') ||
+    (
+      message.includes('Warning: An update to %s inside a test was not wrapped in act') &&
+      args[1] === 'ModelManagement'
+    )
+  ) {
+    return;
+  }
+  originalConsoleError(...args);
+};
+
 // Mock electron API
 const mockElectronAPI = {
   // Window controls
@@ -16,6 +63,7 @@ const mockElectronAPI = {
   // Settings
   saveSettings: jest.fn(),
   loadSettings: jest.fn(),
+  getProviderModels: jest.fn(),
   
   // Workspace operations
   getWorkspaces: jest.fn(),
@@ -60,17 +108,20 @@ const mockElectronAPI = {
   pullOllamaModel: jest.fn(),
   listOllamaModels: jest.fn(),
   deleteOllamaModel: jest.fn(),
+
+  // Auto-update
+  getAppVersion: jest.fn(),
+  checkForUpdate: jest.fn(),
+  downloadUpdate: jest.fn(),
+  installUpdate: jest.fn(),
   
   // Event handlers
   onAnalyzeProgress: jest.fn(() => jest.fn()),
   onRenameProgress: jest.fn(() => jest.fn()),
   onSortProgress: jest.fn(() => jest.fn()),
   onOllamaModelPullProgress: jest.fn(() => jest.fn()),
+  onUpdateDownloadProgress: jest.fn(() => jest.fn()),
   
-  // Workspace sharing
-  generateWorkspaceShareCode: jest.fn(),
-  importWorkspaceFromShareCode: jest.fn(),
-  cleanupExpiredShares: jest.fn(),
 };
 
 // Mock window.electronAPI
