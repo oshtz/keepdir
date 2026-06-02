@@ -12,7 +12,6 @@ export class OpenAIProvider extends Provider {
     ];
     this.supportsVision = true;
     this.maxImagesPerRequest = 85;
-    this.requiresAuth = false; // OpenAI doesn't require user auth, just API key
   }
 
   /**

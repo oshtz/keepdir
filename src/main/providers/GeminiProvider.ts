@@ -13,7 +13,6 @@ export class GeminiProvider extends Provider {
     ];
     this.supportsVision = true;
     this.maxImagesPerRequest = 3600; // Gemini supports up to 3,600 image files
-    this.requiresAuth = false; // Gemini doesn't require user auth, just API key
   }
 
   /**
@@ -36,7 +35,7 @@ export class GeminiProvider extends Provider {
   }
 
   /**
-   * Prepares headers with authentication for Gemini
+   * Prepares Gemini API headers.
    */
   override prepareHeaders(config: ProviderConfig): Record<string, string> {
     const headers: Record<string, string> = {

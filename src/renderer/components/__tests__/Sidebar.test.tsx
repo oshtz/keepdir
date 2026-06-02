@@ -4,23 +4,6 @@ import { ThemeProvider, createTheme } from '@mui/material/styles';
 import Sidebar from '../Sidebar';
 
 // Mock dependencies with minimal implementations
-jest.mock('../LoginDialog', () => {
-  return function MockLoginDialog({ open, onClose, onLogin }: any) {
-    return open ? (
-      <div data-testid="login-dialog">
-        <button onClick={() => onLogin('test@example.com', 'password')}>Login</button>
-        <button onClick={onClose}>Close</button>
-      </div>
-    ) : null;
-  };
-});
-
-jest.mock('../LogoutButton', () => {
-  return function MockLogoutButton() {
-    return <button data-testid="logout-button">Logout</button>;
-  };
-});
-
 jest.mock('../Settings', () => {
   return function MockSettings({ open, onClose }: any) {
     return open ? (
@@ -146,8 +129,6 @@ const mockWorkspaceContextValue = {
   customSections: [] as any[],
   sectionOrder: ['workspaces', 'recent', 'favorites'],
   sectionVisibility: { workspaces: true, recent: true, favorites: true },
-  user: null as any,
-  setUser: jest.fn(),
   setSectionVisibility: jest.fn(),
   clearRecentFolders: jest.fn(),
   addWorkspace: jest.fn(),
@@ -239,28 +220,6 @@ describe('Sidebar Component', () => {
       renderSidebar();
       
       expect(screen.getByTestId('model-management')).toBeInTheDocument();
-    });
-  });
-
-  // User Authentication tests - Profile section is commented out in Sidebar component
-  // These tests document the expected behavior when authentication is fully implemented
-  describe('User Authentication', () => {
-    it('should not show profile section when authentication is not implemented', () => {
-      renderSidebar();
-
-      // Profile section is currently commented out in Sidebar
-      // When auth is implemented, these elements would be present
-      expect(screen.queryByText('Not signed in')).not.toBeInTheDocument();
-      expect(screen.queryByText('Sign in')).not.toBeInTheDocument();
-    });
-
-    it('should still render core sidebar sections without authentication', async () => {
-      renderSidebar();
-
-      // Core sections should work without auth
-      expect(screen.getByText('WORKSPACES')).toBeInTheDocument();
-      expect(screen.getByText('RECENT FOLDERS')).toBeInTheDocument();
-      expect(screen.getByText('FAVORITES')).toBeInTheDocument();
     });
   });
 
@@ -735,47 +694,6 @@ describe('Sidebar Component', () => {
       renderSidebar();
       
       expect(screen.getByTestId('virtual-list')).toBeInTheDocument();
-    });
-  });
-
-  // Auth tests - Profile section is commented out in Sidebar component
-  // These tests document the expected behavior when authentication is fully implemented
-  describe('User Authentication Advanced', () => {
-    it('should not show user profile when authentication is not implemented', () => {
-      const mockContextWithUser = {
-        ...mockWorkspaceContextValue,
-        user: { email: 'test@example.com', token: 'mock-token' },
-      };
-      
-      mockUseWorkspace.mockReturnValue(mockContextWithUser);
-      
-      renderSidebar();
-      
-      // Profile section is currently commented out - user info not displayed
-      expect(screen.queryByText('test@example.com')).not.toBeInTheDocument();
-      expect(screen.queryByTestId('logout-button')).not.toBeInTheDocument();
-    });
-
-    it('should render sidebar normally regardless of user state', async () => {
-      const mockContextWithUser = {
-        ...mockWorkspaceContextValue,
-        user: { email: 'test@example.com', token: 'mock-token' },
-      };
-      
-      mockUseWorkspace.mockReturnValue(mockContextWithUser);
-      
-      renderSidebar();
-      
-      // Core sections should render regardless of auth state
-      expect(screen.getByText('WORKSPACES')).toBeInTheDocument();
-      expect(screen.getByText('Settings')).toBeInTheDocument();
-    });
-
-    it('should not have login dialog when auth is not implemented', async () => {
-      renderSidebar();
-      
-      // Login dialog is commented out, so it shouldn't appear
-      expect(screen.queryByTestId('login-dialog')).not.toBeInTheDocument();
     });
   });
 

@@ -9,7 +9,6 @@ export class OllamaProvider extends Provider {
     this.supportedModels = []; // Will be populated dynamically from Ollama
     this.supportsVision = true; // Ollama supports vision models like llava, bakllava, etc.
     this.maxImagesPerRequest = 10;
-    this.requiresAuth = false; // Ollama doesn't require authentication
   }
 
   /**

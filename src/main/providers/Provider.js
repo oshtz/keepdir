@@ -13,17 +13,10 @@
  */
 
 /**
- * @typedef {Object} UserAuth
- * @property {string} email
- * @property {string} token
- */
-
-/**
  * @typedef {Object} ProviderConfig
  * @property {string} apiKey
  * @property {string} [model]
  * @property {number} [maxTokens]
- * @property {UserAuth} [userAuth] - User authentication information
  */
 
 /**
@@ -47,13 +40,6 @@ class Provider {
   supportsVision;
   /** @type {number} */
   maxImagesPerRequest;
-  /** @type {boolean} */
-  requiresAuth;
-
-  constructor() {
-    this.requiresAuth = false; // Default to not requiring authentication
-  }
-
   /**
    * @param {ProviderConfig} config
    * @returns {Promise<boolean>}
@@ -90,25 +76,7 @@ class Provider {
   }
 
   /**
-   * Validates user authentication if required
-   * @param {UserAuth} userAuth
-   * @returns {Promise<boolean>}
-   */
-  async validateUserAuth(userAuth) {
-    if (!this.requiresAuth) {
-      return true; // No auth required
-    }
-    
-    if (!userAuth || !userAuth.email || !userAuth.token) {
-      return false;
-    }
-
-    // Default implementation - can be overridden by specific providers
-    return true;
-  }
-
-  /**
-   * Prepares headers with authentication if needed
+   * Prepares provider API headers.
    * @param {ProviderConfig} config
    * @returns {Object}
    */
@@ -117,15 +85,8 @@ class Provider {
       'Content-Type': 'application/json'
     };
 
-    // Add API key if provided
     if (config.apiKey) {
       headers['Authorization'] = this.formatApiKeyHeader(config.apiKey);
-    }
-
-    // Add user authentication if required and provided
-    if (this.requiresAuth && config.userAuth) {
-      headers['X-User-Token'] = config.userAuth.token;
-      headers['X-User-Email'] = config.userAuth.email;
     }
 
     return headers;
@@ -152,17 +113,6 @@ class Provider {
         valid: false,
         error: 'API key is required'
       };
-    }
-
-    // Check user authentication if required
-    if (this.requiresAuth) {
-      const authValid = await this.validateUserAuth(config.userAuth);
-      if (!authValid) {
-        return {
-          valid: false,
-          error: 'User authentication is required'
-        };
-      }
     }
 
     // Validate the configuration

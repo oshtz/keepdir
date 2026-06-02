@@ -93,11 +93,6 @@ const mockElectronAPI = {
   cleanupCache: jest.fn(),
   optimizeDatabase: jest.fn(),
   
-  // User auth
-  saveUserAuth: jest.fn(),
-  loadUserAuth: jest.fn(),
-  clearUserAuth: jest.fn(),
-  
   // File analysis
   analyzeDirectoryForSort: jest.fn(),
   analyzeDirectoryForRename: jest.fn(),

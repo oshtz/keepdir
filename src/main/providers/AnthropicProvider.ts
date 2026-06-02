@@ -17,7 +17,6 @@ export class AnthropicProvider extends Provider {
     ];
     this.supportsVision = true;
     this.maxImagesPerRequest = 100;
-    this.requiresAuth = false; // Anthropic doesn't require user auth, just API key
   }
 
   /**
@@ -116,16 +115,6 @@ export class AnthropicProvider extends Provider {
           system: systemMessage.content[0].text 
         })
       };
-
-      // Add user authentication headers if required
-      if (this.requiresAuth && config.userAuth) {
-        // Note: Anthropic SDK doesn't directly support custom headers in this way
-        // This is a placeholder for future implementation if needed
-        requestOptions.headers = {
-          'X-User-Token': config.userAuth.token,
-          'X-User-Email': config.userAuth.email
-        };
-      }
 
       const response = await client.messages.create(requestOptions);
 

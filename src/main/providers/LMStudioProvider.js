@@ -10,7 +10,6 @@ class LMStudioProvider extends Provider {
     this.supportedModels = [];
     this.supportsVision = true;
     this.maxImagesPerRequest = 10;
-    this.requiresAuth = false;
   }
 
   async canUseProvider() {

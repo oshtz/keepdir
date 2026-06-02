@@ -11,7 +11,6 @@ export class LMStudioProvider extends Provider {
     this.supportedModels = []; // Will be populated dynamically from LM Studio
     this.supportsVision = true; // LM Studio supports vision models if loaded
     this.maxImagesPerRequest = 10;
-    this.requiresAuth = false; // LM Studio doesn't require authentication
   }
 
   /**

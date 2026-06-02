@@ -17,7 +17,6 @@ export class OpenRouterProvider extends Provider {
     ];
     this.supportsVision = true;
     this.maxImagesPerRequest = 20;
-    this.requiresAuth = false;
   }
 
   /**

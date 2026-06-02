@@ -13,6 +13,7 @@ const {
   normalizeRenameSuggestions,
   normalizeSortSuggestions
 } = require('./suggestionValidation');
+const { parseJsonPayload } = require('./jsonExtraction');
 const {
   assertNotSymbolicLink,
   isAnalyzableDirectoryEntry,
@@ -184,7 +185,9 @@ function createWindow() {
     mainWindow.loadURL(loadUrl).catch(err => {
       console.error('Failed to load URL:', err);
     });
-    mainWindow.webContents.openDevTools();
+    if (process.env.KEEPDIR_E2E !== '1') {
+      mainWindow.webContents.openDevTools();
+    }
   } else {
     const filePath = path.join(__dirname, '../../dist/index.html');
     debugLog('Loading from file:', filePath);
@@ -1070,9 +1073,7 @@ function createWindow() {
               maxTokens: 1000
             });
 
-            // Remove any markdown formatting or extra text
-            const jsonContent = response.replace(/^```json\s*|\s*```$/g, '').trim();
-            batchSuggestions = JSON.parse(jsonContent);
+            batchSuggestions = parseJsonPayload(response);
             break;
           } catch (error) {
             retries--;
