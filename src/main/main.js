@@ -560,7 +560,7 @@ function createWindow() {
     }
   });
 
-  registerHandler('export-all-data', async (event) => {
+  registerHandler('export-all-data', async () => {
     try {
       const exportData = await db.exportAllData();
 
@@ -868,7 +868,7 @@ function createWindow() {
           if (parsed && typeof parsed.base64 === 'string' && typeof parsed.mimeType === 'string') {
             return parsed;
           }
-        } catch (error) {
+        } catch {
           return null;
         }
         return null;

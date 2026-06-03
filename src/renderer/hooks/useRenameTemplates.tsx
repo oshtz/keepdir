@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 
 export interface RenameTemplate {
   id: string;
@@ -281,7 +281,10 @@ export const useRenameTemplates = () => {
     });
   }, [recentlyUsed]);
 
-  const allTemplates = [...builtInTemplates, ...customTemplates];
+  const allTemplates = useMemo(
+    () => [...builtInTemplates, ...customTemplates],
+    [customTemplates],
+  );
 
   const addCustomTemplate = useCallback((template: Omit<RenameTemplate, 'id'>) => {
     const newTemplate: RenameTemplate = {

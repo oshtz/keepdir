@@ -13,16 +13,16 @@ class OllamaProvider extends Provider {
 
   /**
    * Override canUseProvider to not require API key for Ollama
-   * @param {import('./Provider').ProviderConfig} config
+   * @param {import('./Provider').ProviderConfig} _config
    * @returns {Promise<{valid: boolean, error?: string}>}
    */
-  async canUseProvider(config) {
+  async canUseProvider(_config) {
     // Ollama doesn't need an API key, so skip the base class API key check
     try {
       // Just check if Ollama is running by trying to connect
       await axios.get('http://localhost:11434/api/tags', { timeout: 5000 });
       return { valid: true };
-    } catch (error) {
+    } catch {
       return {
         valid: false,
         error: 'Ollama is not running. Please start Ollama first.'
@@ -31,10 +31,10 @@ class OllamaProvider extends Provider {
   }
 
   /**
-   * @param {import('./Provider').ProviderConfig} config
+   * @param {import('./Provider').ProviderConfig} _config
    * @returns {Promise<boolean>}
    */
-  async validateConfig(config) {
+  async validateConfig(_config) {
     try {
       // Check if Ollama is running
       await axios.get('http://localhost:11434/api/tags', { timeout: 5000 });
@@ -109,11 +109,11 @@ class OllamaProvider extends Provider {
   }
 
   /**
-   * @param {string} base64Data
-   * @param {string} mimeType
+   * @param {string} _base64Data
+   * @param {string} _mimeType
    * @returns {Promise<import('./Provider').ImageValidationResult>}
    */
-  async validateImage(base64Data, mimeType) {
+  async validateImage(_base64Data, _mimeType) {
     // Most Ollama models don't support images yet
     return {
       valid: false,

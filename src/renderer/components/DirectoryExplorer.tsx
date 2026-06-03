@@ -207,14 +207,14 @@ const DirectoryExplorer: React.FC<DirectoryExplorerProps> = ({
     );
   };
 
-  const handleSelectDirectory = async () => {
+  const handleSelectDirectory = useCallback(async () => {
     const path = await window.electronAPI.selectDirectory();
     if (path) {
       setSelectedItems(new Set());
       addRecentFolder(path);
       setCurrentDirectoryPath(path);
     }
-  };
+  }, [addRecentFolder, setCurrentDirectoryPath]);
 
   const handleToggleFavorite = useCallback(
     (path: string, name: string) => {
@@ -758,7 +758,7 @@ const DirectoryExplorer: React.FC<DirectoryExplorerProps> = ({
     showContextMenu(event, menuItems);
   };
 
-  const toggleFavoriteForSelected = () => {
+  const toggleFavoriteForSelected = useCallback(() => {
     const paths = Array.from(selectedItems);
     const byPath = new Map(files.map((f) => [f.path, f] as const));
     paths.forEach((p) => {
@@ -767,7 +767,7 @@ const DirectoryExplorer: React.FC<DirectoryExplorerProps> = ({
         handleToggleFavorite(f.path, f.name);
       }
     });
-  };
+  }, [files, handleToggleFavorite, selectedItems]);
 
   const updateDragSelection = useCallback(
     (clientX: number, clientY: number) => {
@@ -883,7 +883,13 @@ const DirectoryExplorer: React.FC<DirectoryExplorerProps> = ({
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [handleRename, handleSort, selectedItems, files]);
+  }, [
+    handleRename,
+    handleSelectDirectory,
+    handleSort,
+    setViewMode,
+    toggleFavoriteForSelected,
+  ]);
 
   useEffect(() => {
     if (!isDragSelecting) return;

@@ -206,6 +206,29 @@ const Settings: React.FC<SettingsProps> = ({
   const _isLoadingStats = cacheStatsLoading || databaseStatsLoading;
   void _isLoadingStats; // Suppress unused warning
 
+  const loadDatabaseStats = useCallback(async () => {
+    // Trigger manual refresh of background fetched data
+    await Promise.all([refetchCacheStats(), refetchDatabaseStats()]);
+  }, [refetchCacheStats, refetchDatabaseStats]);
+
+  const loadSettings = useCallback(async () => {
+    setLoading(true);
+    try {
+      const result =
+        (await window.electronAPI.loadSettings()) as SettingsResponse;
+      // Preserve existing settings structure
+      setSettings({
+        ...defaultSettings,
+        ...result.settings,
+      });
+    } catch (error) {
+      console.error("Failed to load settings:", error);
+      setError("Failed to load settings");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     // Subscribe to Ollama model pull progress updates
     const unsubscribe = window.electronAPI.onOllamaModelPullProgress(
@@ -305,37 +328,13 @@ const Settings: React.FC<SettingsProps> = ({
       loadSettings();
       loadDatabaseStats();
     }
-  }, [open, initialTab]);
+  }, [open, initialTab, loadDatabaseStats, loadSettings]);
 
   useEffect(() => {
     if (open && activeTab === "providers") {
       loadOllamaModels();
     }
   }, [open, activeTab, loadOllamaModels]);
-
-  const loadDatabaseStats = async () => {
-    // Trigger manual refresh of background fetched data
-    await Promise.all([refetchCacheStats(), refetchDatabaseStats()]);
-  };
-
-  
-  const loadSettings = async () => {
-    setLoading(true);
-    try {
-      const result =
-        (await window.electronAPI.loadSettings()) as SettingsResponse;
-      // Preserve existing settings structure
-      setSettings({
-        ...defaultSettings,
-        ...result.settings,
-      });
-    } catch (error) {
-      console.error("Failed to load settings:", error);
-      setError("Failed to load settings");
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleSave = async () => {
     setLoading(true);

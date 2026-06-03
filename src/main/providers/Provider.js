@@ -44,7 +44,7 @@ class Provider {
    * @param {ProviderConfig} config
    * @returns {Promise<boolean>}
    */
-  async validateConfig(config) {
+  async validateConfig(_config) {
     throw new Error('Not implemented');
   }
 
@@ -53,7 +53,7 @@ class Provider {
    * @param {ProviderConfig} config
    * @returns {Promise<string>}
    */
-  async sendMessage(messages, config) {
+  async sendMessage(_messages, _config) {
     throw new Error('Not implemented');
   }
 
@@ -62,7 +62,7 @@ class Provider {
    * @param {string} mimeType
    * @returns {Promise<ImageValidationResult>}
    */
-  async validateImage(base64Data, mimeType) {
+  async validateImage(_base64Data, _mimeType) {
     throw new Error('Not implemented');
   }
 

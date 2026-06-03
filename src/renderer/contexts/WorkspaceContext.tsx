@@ -18,6 +18,24 @@ import type {
 
 export type { Workspace } from '../electron';
 
+const DEFAULT_WORKSPACE_EMOJIS = [
+  '\u{1F31F}',
+  '\u{1F3AF}',
+  '\u{1F3A8}',
+  '\u{1F4DA}',
+  '\u{1F4A1}',
+  '\u{1F527}',
+  '\u{1F3AE}',
+  '\u{1F3B5}',
+  '\u{1F4DD}',
+  '\u{1F5C2}\uFE0F',
+  '\u{1F4CA}',
+  '\u{1F308}',
+  '\u{1F680}',
+  '\u{1F4BB}',
+  '\u{1F4F1}',
+];
+
 interface WorkspaceContextType {
   workspaces: Workspace[];
   currentWorkspace: Workspace | null;
@@ -105,7 +123,21 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       } else {
         // Create default workspace if none exist
         const id = Date.now().toString();
-        addWorkspace({ id, name: 'Default Workspace', emoji: '' });
+        const defaultWorkspace = {
+          id,
+          name: 'Default Workspace',
+          emoji:
+            DEFAULT_WORKSPACE_EMOJIS[
+              Math.floor(Math.random() * DEFAULT_WORKSPACE_EMOJIS.length)
+            ],
+        };
+        setWorkspaces(prev => {
+          if (prev.length > 0) {
+            return prev;
+          }
+          setCurrentWorkspaceState(defaultWorkspace);
+          return [defaultWorkspace];
+        });
       }
     };
     loadWorkspaces();

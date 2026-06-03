@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useCallback, useState } from "react";
 import { motion } from "framer-motion";
 import {
   Drawer,
@@ -168,7 +168,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     e.preventDefault();
   };
 
-  const handleMouseMove = (e: MouseEvent) => {
+  const handleMouseMove = useCallback((e: MouseEvent) => {
     if (!isResizing) return;
     const newWidth = e.clientX;
     const minWidth = window.innerWidth < 768 ? 180 : 200;
@@ -176,11 +176,11 @@ const Sidebar: React.FC<SidebarProps> = ({
     if (newWidth >= minWidth && newWidth <= maxWidth) {
       setSidebarWidth(newWidth);
     }
-  };
+  }, [isResizing]);
 
-  const handleMouseUp = () => {
+  const handleMouseUp = useCallback(() => {
     setIsResizing(false);
-  };
+  }, []);
 
   React.useEffect(() => {
     if (isResizing) {
@@ -192,7 +192,7 @@ const Sidebar: React.FC<SidebarProps> = ({
       document.removeEventListener("mousemove", handleMouseMove);
       document.removeEventListener("mouseup", handleMouseUp);
     };
-  }, [isResizing]);
+  }, [handleMouseMove, handleMouseUp, isResizing]);
 
   const handleFolderClick = async (path: string) => {
     try {
