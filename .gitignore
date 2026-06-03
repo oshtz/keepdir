@@ -20,7 +20,11 @@ DEV_CHECKLIST.md
 *.sqlite3
 
 # Documentation
-docs/
+docs/*
+!docs/superpowers/
+docs/superpowers/*
+!docs/superpowers/specs/
+!docs/superpowers/specs/*.md
 Cline_readme.txt
 
 # IDE - VSCode
