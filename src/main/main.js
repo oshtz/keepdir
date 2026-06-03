@@ -220,6 +220,10 @@ function createWindow() {
   });
 
   registerHandler('select-directory', async () => {
+    if (process.env.KEEPDIR_E2E === '1' && process.env.KEEPDIR_E2E_SELECT_DIRECTORY) {
+      return requireExistingDirectoryPath(process.env.KEEPDIR_E2E_SELECT_DIRECTORY);
+    }
+
     const result = await dialog.showOpenDialog(mainWindow, {
       properties: ['openDirectory']
     });

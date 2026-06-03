@@ -1,7 +1,7 @@
 import { _electron as electron, expect, test } from '@playwright/test';
 import type { ElectronApplication, Page } from '@playwright/test';
 import { spawn, type ChildProcessWithoutNullStreams } from 'child_process';
-import { mkdtemp, rm } from 'fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'fs/promises';
 import http from 'http';
 import os from 'os';
 import path from 'path';
@@ -59,13 +59,43 @@ async function findMainWindow(app: ElectronApplication): Promise<Page> {
     }
   }
 
-  const firstWindow = await app.firstWindow();
+  const firstWindow = await app.firstWindow({ timeout: 60_000 });
   if ((await firstWindow.title()).toLowerCase() === 'keepdir') {
     return firstWindow;
   }
 
   await firstWindow.waitForLoadState('domcontentloaded');
   return firstWindow;
+}
+
+async function launchApp(
+  tempHome: string,
+  overrides: Record<string, string> = {}
+): Promise<{ app: ElectronApplication; page: Page }> {
+  const launchedApp = await electron.launch({
+    cwd: appRoot,
+    args: ['.'],
+    env: safeEnv({
+      APPDATA: tempHome,
+      HOME: tempHome,
+      KEEPDIR_E2E: '1',
+      NODE_ENV: 'development',
+      ...overrides,
+    }),
+  });
+
+  return {
+    app: launchedApp,
+    page: await findMainWindow(launchedApp),
+  };
+}
+
+function recentFolderButton(page: Page) {
+  return page.getByRole('button', { name: /persisted-project/ }).first();
+}
+
+function customSectionHeading(page: Page, sectionName: string) {
+  return page.getByRole('heading', { name: sectionName.toUpperCase() });
 }
 
 test.describe('Electron smoke', () => {
@@ -111,22 +141,60 @@ test.describe('Electron smoke', () => {
 
   test('launches the local-first app shell', async () => {
     tempHome = await mkdtemp(path.join(os.tmpdir(), 'keepdir-e2e-'));
-    app = await electron.launch({
-      cwd: appRoot,
-      args: ['.'],
-      env: safeEnv({
-        APPDATA: tempHome,
-        HOME: tempHome,
-        KEEPDIR_E2E: '1',
-        NODE_ENV: 'development',
-      }),
-    });
-
-    const page = await findMainWindow(app);
+    const launched = await launchApp(tempHome);
+    app = launched.app;
+    const { page } = launched;
 
     await expect(page).toHaveTitle(/keepdir/i);
     await expect(page.getByText('WORKSPACES')).toBeVisible();
     await expect(page.getByText('Select Directory')).toBeVisible();
     await expect(page.getByText('Selected Model')).toBeVisible();
+  });
+
+  test('persists a selected folder and custom sidebar section across restart', async () => {
+    tempHome = await mkdtemp(path.join(os.tmpdir(), 'keepdir-e2e-'));
+    const selectedDirectory = path.join(tempHome, 'persisted-project');
+    const sectionName = 'E2E Persisted Section';
+    await mkdir(selectedDirectory, { recursive: true });
+    await writeFile(path.join(selectedDirectory, 'example.txt'), 'keepdir e2e');
+
+    let launched = await launchApp(tempHome, {
+      KEEPDIR_E2E_SELECT_DIRECTORY: selectedDirectory,
+    });
+    app = launched.app;
+    let page = launched.page;
+
+    await expect(page.getByText('WORKSPACES')).toBeVisible();
+    await page.getByRole('button', { name: 'Select Directory' }).click();
+    await expect(page.getByText('example.txt')).toBeVisible();
+    await expect(page.getByText('RECENT FOLDERS')).toBeVisible();
+    await expect(recentFolderButton(page)).toBeVisible();
+
+    await page.getByText('Settings').click();
+    const settingsDialog = page.getByRole('dialog');
+    await expect(settingsDialog.getByText('Settings')).toBeVisible();
+    await settingsDialog.getByText('Custom Sections').click();
+    await settingsDialog.getByLabel('Section Name').fill(sectionName);
+    await settingsDialog.getByRole('button', { name: 'Create' }).click();
+    await expect(
+      settingsDialog.getByText('Custom section created successfully')
+    ).toBeVisible();
+    await settingsDialog.getByRole('button', { name: 'close' }).click();
+    await expect(customSectionHeading(page, sectionName)).toBeVisible();
+
+    await page.waitForTimeout(1_000);
+    await app.close();
+    app = null;
+
+    launched = await launchApp(tempHome, {
+      KEEPDIR_E2E_SELECT_DIRECTORY: selectedDirectory,
+    });
+    app = launched.app;
+    page = launched.page;
+
+    await expect(page).toHaveTitle(/keepdir/i);
+    await expect(page.getByText('RECENT FOLDERS')).toBeVisible();
+    await expect(recentFolderButton(page)).toBeVisible();
+    await expect(customSectionHeading(page, sectionName)).toBeVisible();
   });
 });
