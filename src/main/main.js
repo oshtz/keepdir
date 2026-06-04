@@ -2,6 +2,7 @@ const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
 const fs = require('fs').promises;
 const path = require('path');
 const axios = require('axios');
+const { randomUUID } = require('crypto');
 const { spawn } = require('child_process');
 const Database = require('./database');
 const updater = require('./updater');
@@ -11,6 +12,7 @@ const {
 } = require('./fileOperations');
 const { createAnalysisService } = require('./analysisService');
 const { getProvider } = require('./providers');
+const { createWatchFolderManager } = require('./watchFolderManager');
 const {
   normalizeCacheAgeHours,
   normalizeOllamaModelName,
@@ -34,6 +36,11 @@ const {
   normalizeWorkspaceId,
   normalizeWorkspaceSettingRequest
 } = require('./stateValidation');
+const {
+  normalizeWatchFolder,
+  normalizeWatchedSuggestionIds,
+  toWatchedRenameSuggestionsPayload
+} = require('./watchFolderValidation');
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (require('electron-squirrel-startup')) {
@@ -370,6 +377,30 @@ function createWindow() {
     debugLog('Renderer Console:', message);
   });
 
+  const analysisService = createAnalysisService({
+    db,
+    getProvider,
+    logger: {
+      debug: debugLog,
+      error: console.error
+    }
+  });
+  const notifyRenderer = (channel, payload) => {
+    if (!mainWindow.isDestroyed()) {
+      mainWindow.webContents.send(channel, payload);
+    }
+  };
+  const watchFolderManager = createWatchFolderManager({
+    db,
+    analysisService,
+    notify: notifyRenderer,
+    createId: () => randomUUID()
+  });
+  if (global.watchFolderManager) {
+    global.watchFolderManager.shutdown();
+  }
+  global.watchFolderManager = watchFolderManager;
+
   // Workspace handlers
   registerHandler('get-workspaces', async () => {
     try {
@@ -435,6 +466,211 @@ function createWindow() {
       return { success: true };
     } catch (error) {
       console.error('Failed to save workspace setting:', error);
+      return { error: error.message };
+    }
+  });
+
+  registerHandler('set-active-watch-workspace', async (_event, workspaceId) => {
+    try {
+      const normalizedWorkspaceId = workspaceId ? normalizeWorkspaceId(workspaceId) : null;
+      await watchFolderManager.setActiveWorkspace(normalizedWorkspaceId);
+      return { success: true };
+    } catch (error) {
+      console.error('Failed to set active watch workspace:', error);
+      return { error: error.message };
+    }
+  });
+
+  registerHandler('get-watch-folders', async (_event, workspaceId) => {
+    try {
+      const normalizedWorkspaceId = normalizeWorkspaceId(workspaceId);
+      return {
+        success: true,
+        folders: await db.getWatchFolders(normalizedWorkspaceId)
+      };
+    } catch (error) {
+      return { error: error.message };
+    }
+  });
+
+  registerHandler('save-watch-folder', async (_event, workspaceId, folder) => {
+    try {
+      const normalizedWorkspaceId = normalizeWorkspaceId(workspaceId);
+      const normalizedFolder = normalizeWatchFolder(folder);
+      const result = await db.saveWatchFolder(normalizedWorkspaceId, normalizedFolder);
+      await watchFolderManager.reloadWatchers();
+      notifyRenderer('watch-folders-changed', { workspaceId: normalizedWorkspaceId });
+      return result;
+    } catch (error) {
+      return { error: error.message };
+    }
+  });
+
+  registerHandler('remove-watch-folder', async (_event, workspaceId, folderId) => {
+    try {
+      const normalizedWorkspaceId = normalizeWorkspaceId(workspaceId);
+      const result = await db.removeWatchFolder(normalizedWorkspaceId, folderId);
+      await watchFolderManager.reloadWatchers();
+      notifyRenderer('watch-folders-changed', { workspaceId: normalizedWorkspaceId });
+      return result;
+    } catch (error) {
+      return { error: error.message };
+    }
+  });
+
+  registerHandler('set-watch-folder-enabled', async (_event, workspaceId, folderId, enabled) => {
+    try {
+      const normalizedWorkspaceId = normalizeWorkspaceId(workspaceId);
+      const result = await db.setWatchFolderEnabled(normalizedWorkspaceId, folderId, enabled === true);
+      await watchFolderManager.reloadWatchers();
+      notifyRenderer('watch-folders-changed', { workspaceId: normalizedWorkspaceId });
+      return result;
+    } catch (error) {
+      return { error: error.message };
+    }
+  });
+
+  registerHandler('get-watched-rename-suggestions', async (_event, workspaceId) => {
+    try {
+      const normalizedWorkspaceId = normalizeWorkspaceId(workspaceId);
+      const rows = await db.getWatchedRenameSuggestions(normalizedWorkspaceId);
+      return {
+        success: true,
+        suggestions: toWatchedRenameSuggestionsPayload(rows)
+      };
+    } catch (error) {
+      return { error: error.message };
+    }
+  });
+
+  registerHandler('dismiss-watched-rename-suggestions', async (_event, workspaceId, suggestionIds) => {
+    try {
+      const normalizedWorkspaceId = normalizeWorkspaceId(workspaceId);
+      const ids = normalizeWatchedSuggestionIds(suggestionIds);
+      await Promise.all(ids.map((id) => (
+        db.updateWatchedRenameSuggestionStatus(normalizedWorkspaceId, id, 'dismissed')
+      )));
+      notifyRenderer('watched-rename-suggestions-changed', { workspaceId: normalizedWorkspaceId });
+      return { success: true };
+    } catch (error) {
+      return { error: error.message };
+    }
+  });
+
+  registerHandler('refresh-watched-rename-suggestions', async (_event, workspaceId, suggestionIds) => {
+    try {
+      const normalizedWorkspaceId = normalizeWorkspaceId(workspaceId);
+      const ids = normalizeWatchedSuggestionIds(suggestionIds);
+      const rows = await db.getWatchedRenameSuggestionsByIds(normalizedWorkspaceId, ids);
+      for (const row of rows) {
+        await watchFolderManager.handleDetectedPath({
+          workspaceId: normalizedWorkspaceId,
+          folderPath: row.folder_path,
+          filePath: row.file_path
+        });
+      }
+      notifyRenderer('watched-rename-suggestions-changed', { workspaceId: normalizedWorkspaceId });
+      return { success: true };
+    } catch (error) {
+      return { error: error.message };
+    }
+  });
+
+  registerHandler('apply-watched-rename-suggestions', async (event, workspaceId, suggestionIds) => {
+    try {
+      const normalizedWorkspaceId = normalizeWorkspaceId(workspaceId);
+      const ids = normalizeWatchedSuggestionIds(suggestionIds);
+      const rows = await db.getWatchedRenameSuggestionsByIds(normalizedWorkspaceId, ids);
+      const groupedByFolder = new Map();
+
+      for (const row of rows) {
+        if (row.status !== 'suggested' || !row.suggested_name) {
+          await db.updateWatchedRenameSuggestionStatus(
+            normalizedWorkspaceId,
+            row.id,
+            'error',
+            'No suggested filename to apply'
+          );
+          continue;
+        }
+
+        let stats;
+        try {
+          stats = await fs.lstat(row.file_path);
+        } catch (error) {
+          if (error.code === 'ENOENT' || error.code === 'ENOTDIR') {
+            await db.updateWatchedRenameSuggestionStatus(
+              normalizedWorkspaceId,
+              row.id,
+              'stale',
+              'File changed since suggestion was generated'
+            );
+            continue;
+          }
+          throw error;
+        }
+
+        const isStale = !stats.isFile()
+          || stats.isSymbolicLink()
+          || stats.size !== row.file_size
+          || stats.mtimeMs !== row.file_mtime_ms;
+        if (isStale) {
+          await db.updateWatchedRenameSuggestionStatus(
+            normalizedWorkspaceId,
+            row.id,
+            'stale',
+            'File changed since suggestion was generated'
+          );
+          continue;
+        }
+
+        if (!groupedByFolder.has(row.folder_path)) {
+          groupedByFolder.set(row.folder_path, []);
+        }
+        groupedByFolder.get(row.folder_path).push({
+          id: row.id,
+          originalName: row.original_name,
+          suggestedName: row.suggested_name,
+          reason: row.reason || ''
+        });
+      }
+
+      const results = [];
+      for (const [directoryPath, renames] of groupedByFolder.entries()) {
+        const result = await applyRenameSuggestions({
+          directoryPath,
+          suggestions: {
+            categories: [{
+              name: 'Files to Rename',
+              description: 'Files that will be renamed',
+              suggestedPath: '.',
+              files: renames.map((rename) => rename.originalName),
+              renames
+            }]
+          },
+          db,
+          onProgress: (channel, progressPayload) => event.sender.send(channel, progressPayload)
+        });
+        results.push(result);
+
+        const errorsByFile = new Map((result.errors || []).map((item) => [item.file, item.error]));
+        for (const rename of renames) {
+          const error = errorsByFile.get(rename.originalName);
+          await db.updateWatchedRenameSuggestionStatus(
+            normalizedWorkspaceId,
+            rename.id,
+            error ? 'error' : 'applied',
+            error || null
+          );
+        }
+      }
+
+      notifyRenderer('watched-rename-suggestions-changed', { workspaceId: normalizedWorkspaceId });
+      return {
+        success: results.every((result) => result.success),
+        results
+      };
+    } catch (error) {
       return { error: error.message };
     }
   });
@@ -677,15 +913,6 @@ function createWindow() {
   });
 
 
-  const analysisService = createAnalysisService({
-    db,
-    getProvider,
-    logger: {
-      debug: debugLog,
-      error: console.error
-    }
-  });
-
   // Register IPC handlers for file analysis
   registerHandler('analyze-directory-for-sort', async (event, directoryPath, selectedPaths) => {
     return analysisService.analyzeDirectory({
@@ -818,6 +1045,9 @@ if (app) {
 
   // Close database when app quits
   app.on('before-quit', () => {
+    if (global.watchFolderManager) {
+      global.watchFolderManager.shutdown();
+    }
     db.close();
   });
 

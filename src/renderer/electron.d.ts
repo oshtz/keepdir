@@ -193,6 +193,40 @@ export interface WorkspaceSettings {
   error?: string;
 }
 
+export interface WatchFolder {
+  id: string;
+  path: string;
+  enabled: boolean;
+  createdAt?: string;
+}
+
+export type WatchedRenameSuggestionStatus =
+  | 'detected'
+  | 'stabilizing'
+  | 'queued'
+  | 'analyzing'
+  | 'suggested'
+  | 'error'
+  | 'dismissed'
+  | 'applied'
+  | 'stale';
+
+export interface WatchedRenameSuggestion {
+  id: string;
+  workspaceId: string;
+  folderPath: string;
+  filePath: string;
+  originalName: string;
+  suggestedName?: string | null;
+  reason?: string | null;
+  status: WatchedRenameSuggestionStatus;
+  fileSize: number;
+  fileMtimeMs: number;
+  errorMessage?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface ImportOptions {
   generateNewId?: boolean;
   overwriteExisting?: boolean;
@@ -258,6 +292,15 @@ export interface ElectronAPI {
   getWorkspaceSettings: (workspaceId: string) => Promise<WorkspaceSettings>;
   getWorkspaceSetting: (workspaceId: string, key: string) => Promise<unknown>;
   saveWorkspaceSetting: (workspaceId: string, key: string, value: unknown) => Promise<ApiResult>;
+  setActiveWatchWorkspace: (workspaceId: string | null) => Promise<ApiResult>;
+  getWatchFolders: (workspaceId: string) => Promise<ApiResult & { folders?: WatchFolder[] }>;
+  saveWatchFolder: (workspaceId: string, folder: WatchFolder) => Promise<ApiResult & { folder?: WatchFolder }>;
+  removeWatchFolder: (workspaceId: string, folderId: string) => Promise<ApiResult>;
+  setWatchFolderEnabled: (workspaceId: string, folderId: string, enabled: boolean) => Promise<ApiResult>;
+  getWatchedRenameSuggestions: (workspaceId: string) => Promise<ApiResult & { suggestions?: WatchedRenameSuggestion[] }>;
+  dismissWatchedRenameSuggestions: (workspaceId: string, suggestionIds: string[]) => Promise<ApiResult>;
+  refreshWatchedRenameSuggestions: (workspaceId: string, suggestionIds: string[]) => Promise<ApiResult>;
+  applyWatchedRenameSuggestions: (workspaceId: string, suggestionIds: string[]) => Promise<ApiResult & { results?: RenameApplyResult[] }>;
 
   // Window controls
   minimizeWindow: () => void;
@@ -290,6 +333,8 @@ export interface ElectronAPI {
   onAnalyzeProgress: (callback: (progress: ProgressInfo) => void) => () => void;
   onRenameProgress: (callback: (progress: ProgressInfo) => void) => () => void;
   onSortProgress: (callback: (progress: ProgressInfo) => void) => () => void;
+  onWatchFoldersChanged: (callback: (payload: { workspaceId: string; error?: string }) => void) => () => void;
+  onWatchedRenameSuggestionsChanged: (callback: (payload: { workspaceId: string }) => void) => () => void;
   
   // Ollama operations
   pullOllamaModel: (modelName: string) => Promise<ApiResult>;
