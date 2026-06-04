@@ -4,9 +4,11 @@ const {
   WATCH_FOLDER_SETTING_KEY,
   WATCHED_RENAME_STATUSES,
   isIgnoredWatchedFileName,
+  normalizeWatchFolderId,
   normalizeWatchFolder,
   normalizeWatchFoldersSetting,
   normalizeWatchedRenameStatus,
+  normalizeWatchedRenameSuggestion,
   normalizeWatchedSuggestionIds,
   requireDirectChildFilePath,
   toWatchedRenameSuggestionPayload,
@@ -54,7 +56,9 @@ describe('watch folder validation', () => {
   });
 
   it('rejects unsafe ids and paths', () => {
+    expect(normalizeWatchFolderId('watch-1')).toBe('watch-1');
     expect(() => normalizeWatchFolder({ id: '../bad', path: 'C:/Safe' })).toThrow('Watch folder id is invalid');
+    expect(() => normalizeWatchFolderId('../bad')).toThrow('Watch folder id is invalid');
     expect(() => normalizeWatchFolder({ id: 'watch-1', path: '' })).toThrow('Watch folder path is required');
     expect(() => normalizeWatchedSuggestionIds(['suggestion-1', '../bad'])).toThrow('Watched suggestion id is invalid');
   });
@@ -114,6 +118,74 @@ describe('watch folder validation', () => {
     expect(requireDirectChildFilePath(root, path.join(root, '..file.txt'))).toBe(path.join(root, '..file.txt'));
     expect(() => requireDirectChildFilePath(root, path.join(root, 'nested', 'receipt.pdf'))).toThrow('direct child');
     expect(() => requireDirectChildFilePath(root, path.resolve('C:/Users/Ada/Other/file.txt'))).toThrow('inside watched folder');
+  });
+
+  it('normalizes watched rename suggestions for persistence', () => {
+    const folderPath = path.resolve('C:/Users/Ada/Downloads');
+    const filePath = path.join(folderPath, 'scan.pdf');
+
+    expect(normalizeWatchedRenameSuggestion({
+      id: 'suggestion-1',
+      workspaceId: 'workspace-1',
+      folderPath,
+      filePath,
+      originalName: ' scan.pdf ',
+      suggestedName: ' invoice-2026.pdf ',
+      reason: ' Looks like an invoice ',
+      status: 'suggested',
+      fileSize: '12',
+      fileMtimeMs: '1000'
+    })).toEqual({
+      id: 'suggestion-1',
+      workspaceId: 'workspace-1',
+      folderPath,
+      filePath,
+      originalName: 'scan.pdf',
+      suggestedName: 'invoice-2026.pdf',
+      reason: 'Looks like an invoice',
+      status: 'suggested',
+      fileSize: 12,
+      fileMtimeMs: 1000,
+      errorMessage: null
+    });
+  });
+
+  it('rejects malformed watched rename suggestions', () => {
+    const folderPath = path.resolve('C:/Users/Ada/Downloads');
+    const validSuggestion = {
+      id: 'suggestion-1',
+      workspaceId: 'workspace-1',
+      folderPath,
+      filePath: path.join(folderPath, 'scan.pdf'),
+      originalName: 'scan.pdf',
+      suggestedName: 'invoice-2026.pdf',
+      reason: 'Looks like an invoice',
+      status: 'suggested',
+      fileSize: 12,
+      fileMtimeMs: 1000
+    };
+
+    [
+      [{ id: undefined }, 'Watched suggestion id must be a string'],
+      [{ workspaceId: '../bad' }, 'Workspace id is invalid'],
+      [{ filePath: path.join(folderPath, 'nested', 'scan.pdf') }, 'direct child'],
+      [{ filePath: path.resolve('C:/Users/Ada/Other/scan.pdf') }, 'inside watched folder'],
+      [{ originalName: 'nested/scan.pdf' }, 'Original file name must be a file name'],
+      [{ suggestedName: 'nested/invoice.pdf' }, 'Suggested file name must be a file name'],
+      [{ fileSize: undefined }, 'File size is required'],
+      [{ fileSize: false }, 'File size must be a finite number'],
+      [{ fileSize: -1 }, 'File size cannot be negative'],
+      [{ fileSize: Number.POSITIVE_INFINITY }, 'File size must be a finite number'],
+      [{ fileMtimeMs: undefined }, 'File mtime is required'],
+      [{ fileMtimeMs: true }, 'File mtime must be a finite number'],
+      [{ fileMtimeMs: -1 }, 'File mtime cannot be negative'],
+      [{ status: 'dismissed' }, 'Watched rename suggestion status must be updated explicitly']
+    ].forEach(([override, message]) => {
+      expect(() => normalizeWatchedRenameSuggestion({
+        ...validSuggestion,
+        ...override
+      })).toThrow(message);
+    });
   });
 
   it('maps database rows to renderer payloads', () => {

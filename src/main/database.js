@@ -5,9 +5,11 @@ const fs = require('fs');
 
 const {
   WATCH_FOLDER_SETTING_KEY,
+  normalizeWatchFolderId,
   normalizeWatchFolder,
   normalizeWatchFoldersSetting,
   normalizeWatchedRenameStatus,
+  normalizeWatchedRenameSuggestion,
   normalizeWatchedSuggestionIds
 } = require('./watchFolderValidation');
 
@@ -164,7 +166,7 @@ class Database {
 
       this.db.run(`
         CREATE TABLE IF NOT EXISTS watched_rename_suggestions (
-          id TEXT PRIMARY KEY,
+          id TEXT PRIMARY KEY NOT NULL,
           workspace_id TEXT NOT NULL,
           folder_path TEXT NOT NULL,
           file_path TEXT NOT NULL,
@@ -1711,37 +1713,43 @@ class Database {
 
   async saveWatchFolder(workspaceId, folder) {
     const normalized = normalizeWatchFolder(folder);
-    const folders = await this.getWatchFolders(workspaceId);
-    const nextFolders = folders.some((item) => item.id === normalized.id)
-      ? folders.map((item) => item.id === normalized.id ? normalized : item)
-      : [...folders, normalized];
-    await this.saveWorkspaceSetting(workspaceId, WATCH_FOLDER_SETTING_KEY, nextFolders);
-    return { success: true, folder: normalized };
+    return this._withTransaction(async () => {
+      const folders = await this.getWatchFolders(workspaceId);
+      const nextFolders = folders.some((item) => item.id === normalized.id)
+        ? folders.map((item) => item.id === normalized.id ? normalized : item)
+        : [...folders, normalized];
+      await this.saveWorkspaceSetting(workspaceId, WATCH_FOLDER_SETTING_KEY, nextFolders);
+      return { success: true, folder: normalized };
+    });
   }
 
   async removeWatchFolder(workspaceId, folderId) {
-    const id = normalizeWatchedSuggestionIds([folderId])[0];
-    const folders = await this.getWatchFolders(workspaceId);
-    await this.saveWorkspaceSetting(
-      workspaceId,
-      WATCH_FOLDER_SETTING_KEY,
-      folders.filter((folder) => folder.id !== id)
-    );
-    return { success: true };
+    const id = normalizeWatchFolderId(folderId);
+    return this._withTransaction(async () => {
+      const folders = await this.getWatchFolders(workspaceId);
+      await this.saveWorkspaceSetting(
+        workspaceId,
+        WATCH_FOLDER_SETTING_KEY,
+        folders.filter((folder) => folder.id !== id)
+      );
+      return { success: true };
+    });
   }
 
   async setWatchFolderEnabled(workspaceId, folderId, enabled) {
-    const id = normalizeWatchedSuggestionIds([folderId])[0];
-    const folders = await this.getWatchFolders(workspaceId);
-    const nextFolders = folders.map((folder) => (
-      folder.id === id ? { ...folder, enabled: enabled === true } : folder
-    ));
-    await this.saveWorkspaceSetting(workspaceId, WATCH_FOLDER_SETTING_KEY, nextFolders);
-    return { success: true };
+    const id = normalizeWatchFolderId(folderId);
+    return this._withTransaction(async () => {
+      const folders = await this.getWatchFolders(workspaceId);
+      const nextFolders = folders.map((folder) => (
+        folder.id === id ? { ...folder, enabled: enabled === true } : folder
+      ));
+      await this.saveWorkspaceSetting(workspaceId, WATCH_FOLDER_SETTING_KEY, nextFolders);
+      return { success: true };
+    });
   }
 
   async upsertWatchedRenameSuggestion(suggestion) {
-    const status = normalizeWatchedRenameStatus(suggestion.status);
+    const normalized = normalizeWatchedRenameSuggestion(suggestion);
     await this._run(
       `INSERT INTO watched_rename_suggestions (
          id, workspace_id, folder_path, file_path, original_name,
@@ -1758,17 +1766,17 @@ class Database {
          error_message = excluded.error_message,
          updated_at = CURRENT_TIMESTAMP`,
       [
-        suggestion.id,
-        suggestion.workspaceId,
-        this._normalizePath(suggestion.folderPath),
-        this._normalizePath(suggestion.filePath),
-        this._normalizeFilename(suggestion.originalName),
-        suggestion.suggestedName || null,
-        suggestion.reason || null,
-        status,
-        Number(suggestion.fileSize) || 0,
-        Number(suggestion.fileMtimeMs) || 0,
-        suggestion.errorMessage || null
+        normalized.id,
+        normalized.workspaceId,
+        this._normalizePath(normalized.folderPath),
+        this._normalizePath(normalized.filePath),
+        normalized.originalName,
+        normalized.suggestedName,
+        normalized.reason,
+        normalized.status,
+        normalized.fileSize,
+        normalized.fileMtimeMs,
+        normalized.errorMessage
       ]
     );
   }

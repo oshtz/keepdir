@@ -26,6 +26,7 @@ const WATCHED_RENAME_STATUSES = new Set([
   'applied',
   'stale'
 ]);
+const WATCHED_RENAME_TERMINAL_STATUSES = new Set(['dismissed', 'applied']);
 
 function isPlainObject(value) {
   return Object.prototype.toString.call(value) === '[object Object]';
@@ -50,6 +51,70 @@ function normalizeIsoDate(value) {
   return date.toISOString();
 }
 
+function normalizeWatchFolderId(value) {
+  return normalizeRecordId(value, 'Watch folder id');
+}
+
+function normalizeWatchFolderPath(value, label = 'Watch folder path') {
+  const folderPath = requireString(value, label, {
+    maxLength: MAX_PATH_LENGTH,
+    trim: true
+  });
+  return path.resolve(folderPath);
+}
+
+function normalizeWatchedFilename(value, label) {
+  const filename = requireString(value, label, {
+    maxLength: 255,
+    trim: true
+  }).normalize('NFC');
+
+  if (filename === '.' || filename === '..' || /[\\/]/.test(filename)) {
+    throw new Error(`${label} must be a file name.`);
+  }
+
+  return filename;
+}
+
+function normalizeOptionalWatchedFilename(value, label) {
+  if (value == null || (typeof value === 'string' && value.trim() === '')) {
+    return null;
+  }
+  return normalizeWatchedFilename(value, label);
+}
+
+function normalizeOptionalText(value, label, maxLength = 2048) {
+  if (value == null || (typeof value === 'string' && value.trim() === '')) {
+    return null;
+  }
+
+  return requireString(value, label, {
+    maxLength,
+    trim: true
+  }).normalize('NFC');
+}
+
+function normalizeRequiredNonNegativeNumber(value, label) {
+  if (value == null || (typeof value === 'string' && value.trim() === '')) {
+    throw new Error(`${label} is required.`);
+  }
+
+  if (typeof value !== 'number' && typeof value !== 'string') {
+    throw new Error(`${label} must be a finite number.`);
+  }
+
+  const number = Number(value);
+  if (!Number.isFinite(number)) {
+    throw new Error(`${label} must be a finite number.`);
+  }
+
+  if (number < 0) {
+    throw new Error(`${label} cannot be negative.`);
+  }
+
+  return number;
+}
+
 function isIgnoredWatchedFileName(fileName) {
   if (typeof fileName !== 'string') {
     return true;
@@ -66,14 +131,10 @@ function isIgnoredWatchedFileName(fileName) {
 
 function normalizeWatchFolder(folder) {
   const folderObject = requirePlainObject(folder, 'Watch folder');
-  const folderPath = requireString(folderObject.path, 'Watch folder path', {
-    maxLength: MAX_PATH_LENGTH,
-    trim: true
-  });
 
   return {
-    id: normalizeRecordId(folderObject.id, 'Watch folder id'),
-    path: path.resolve(folderPath),
+    id: normalizeWatchFolderId(folderObject.id),
+    path: normalizeWatchFolderPath(folderObject.path),
     enabled: folderObject.enabled === true,
     createdAt: normalizeIsoDate(folderObject.createdAt)
   };
@@ -115,11 +176,33 @@ function normalizeWatchedRenameStatus(status) {
   return status;
 }
 
+function normalizeWatchedRenameSuggestion(suggestion) {
+  const suggestionObject = requirePlainObject(suggestion, 'Watched rename suggestion');
+  const status = normalizeWatchedRenameStatus(suggestionObject.status);
+
+  if (WATCHED_RENAME_TERMINAL_STATUSES.has(status)) {
+    throw new Error('Watched rename suggestion status must be updated explicitly.');
+  }
+
+  const folderPath = normalizeWatchFolderPath(suggestionObject.folderPath);
+
+  return {
+    id: normalizeRecordId(suggestionObject.id, 'Watched suggestion id'),
+    workspaceId: normalizeRecordId(suggestionObject.workspaceId, 'Workspace id'),
+    folderPath,
+    filePath: requireDirectChildFilePath(folderPath, suggestionObject.filePath),
+    originalName: normalizeWatchedFilename(suggestionObject.originalName, 'Original file name'),
+    suggestedName: normalizeOptionalWatchedFilename(suggestionObject.suggestedName, 'Suggested file name'),
+    reason: normalizeOptionalText(suggestionObject.reason, 'Watched rename reason'),
+    status,
+    fileSize: normalizeRequiredNonNegativeNumber(suggestionObject.fileSize, 'File size'),
+    fileMtimeMs: normalizeRequiredNonNegativeNumber(suggestionObject.fileMtimeMs, 'File mtime'),
+    errorMessage: normalizeOptionalText(suggestionObject.errorMessage, 'Watched rename error message')
+  };
+}
+
 function requireDirectChildFilePath(folderPath, filePath) {
-  const resolvedFolderPath = path.resolve(requireString(folderPath, 'Watch folder path', {
-    maxLength: MAX_PATH_LENGTH,
-    trim: true
-  }));
+  const resolvedFolderPath = normalizeWatchFolderPath(folderPath);
   const resolvedFilePath = path.resolve(requireString(filePath, 'Watched file path', {
     maxLength: MAX_PATH_LENGTH,
     trim: true
@@ -165,10 +248,13 @@ function toWatchedRenameSuggestionsPayload(rows) {
 module.exports = {
   WATCH_FOLDER_SETTING_KEY,
   WATCHED_RENAME_STATUSES,
+  WATCHED_RENAME_TERMINAL_STATUSES,
   isIgnoredWatchedFileName,
+  normalizeWatchFolderId,
   normalizeWatchFolder,
   normalizeWatchFoldersSetting,
   normalizeWatchedRenameStatus,
+  normalizeWatchedRenameSuggestion,
   normalizeWatchedSuggestionIds,
   requireDirectChildFilePath,
   toWatchedRenameSuggestionPayload,
