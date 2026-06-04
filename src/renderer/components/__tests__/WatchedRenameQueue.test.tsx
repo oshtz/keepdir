@@ -65,8 +65,7 @@ describe('WatchedRenameQueue', () => {
     render(<WatchedRenameQueue workspaceId="workspace-1" open onClose={jest.fn()} />);
 
     expect(screen.getByText('C:/Downloads')).toBeInTheDocument();
-    expect(screen.getByText('scan.txt')).toBeInTheDocument();
-    expect(screen.getByText('invoice-2026.txt')).toBeInTheDocument();
+    expect(screen.getByText('scan.txt -> invoice-2026.txt')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /apply selected/i })).toBeInTheDocument();
   });
 

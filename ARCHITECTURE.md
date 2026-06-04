@@ -13,6 +13,7 @@ keepdir is a local-first Electron desktop app. There is no app-level user accoun
 
 - `src/main/database.js` stores workspaces, workspace settings, custom sections, operation history settings, and file analysis cache in SQLite.
 - The app uses WAL mode and local cache cleanup/optimization utilities.
+- Watched-folder configuration is stored per workspace. Generated watched rename suggestions are stored in SQLite so review queues survive renderer reloads and app restarts.
 - Export/import flows serialize workspace or full-app data to JSON files chosen by the user.
 
 ## AI Providers
@@ -27,6 +28,7 @@ keepdir is a local-first Electron desktop app. There is no app-level user accoun
 - The renderer does not receive Node.js access directly.
 - IPC payloads are normalized in `ipcValidation.js`, `stateValidation.js`, `suggestionValidation.js`, and `importValidation.js`.
 - File operations are applied in the main process and return structured partial-success results for recovery UI.
+- Watch folders are opt-in and active only while the app is running. They can enqueue AI rename suggestions for direct-child files, but no watched file is renamed until the user applies selected suggestions.
 
 ## Verification
 

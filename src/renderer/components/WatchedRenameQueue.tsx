@@ -142,20 +142,9 @@ const WatchedRenameQueue: React.FC<WatchedRenameQueueProps> = ({ workspaceId, op
                     inputProps={{ 'aria-label': `Select ${suggestion.originalName}` }}
                   />
                   <ListItemText
-                    primary={
-                      <Box component="span">
-                        <Typography component="span" sx={{ fontFamily: 'var(--font-body)', fontWeight: 600 }}>
-                          {suggestion.originalName}
-                        </Typography>
-                        <Typography component="span" sx={{ fontFamily: 'var(--font-body)', mx: 0.75 }}>
-                          -&gt;
-                        </Typography>
-                        <Typography component="span" sx={{ fontFamily: 'var(--font-body)' }}>
-                          {suggestion.suggestedName || '(no suggestion)'}
-                        </Typography>
-                      </Box>
-                    }
+                    primary={`${suggestion.originalName} -> ${suggestion.suggestedName || '(no suggestion)'}`}
                     secondary={suggestion.errorMessage || suggestion.reason || ''}
+                    primaryTypographyProps={{ sx: { fontFamily: 'var(--font-body)', fontWeight: 600 } }}
                     secondaryTypographyProps={{ sx: { fontFamily: 'var(--font-body)' } }}
                   />
                 </ListItem>

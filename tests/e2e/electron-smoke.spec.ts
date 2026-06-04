@@ -1,7 +1,7 @@
 import { _electron as electron, expect, test } from '@playwright/test';
 import type { ElectronApplication, Page } from '@playwright/test';
 import { spawn, type ChildProcessWithoutNullStreams } from 'child_process';
-import { mkdir, mkdtemp, rm, writeFile } from 'fs/promises';
+import { mkdir, mkdtemp, readdir, rm, writeFile } from 'fs/promises';
 import http from 'http';
 import os from 'os';
 import path from 'path';
@@ -94,6 +94,10 @@ function recentFolderButton(page: Page) {
   return page.getByRole('button', { name: /persisted-project/ }).first();
 }
 
+function recentFoldersHeading(page: Page) {
+  return page.getByRole('heading', { name: 'RECENT FOLDERS' });
+}
+
 function customSectionHeading(page: Page, sectionName: string) {
   return page.getByRole('heading', { name: sectionName.toUpperCase() });
 }
@@ -167,7 +171,7 @@ test.describe('Electron smoke', () => {
     await expect(page.getByText('WORKSPACES')).toBeVisible();
     await page.getByRole('button', { name: 'Select Directory' }).click();
     await expect(page.getByText('example.txt')).toBeVisible();
-    await expect(page.getByText('RECENT FOLDERS')).toBeVisible();
+    await expect(recentFoldersHeading(page)).toBeVisible();
     await expect(recentFolderButton(page)).toBeVisible();
 
     await page.getByText('Settings').click();
@@ -193,8 +197,39 @@ test.describe('Electron smoke', () => {
     page = launched.page;
 
     await expect(page).toHaveTitle(/keepdir/i);
-    await expect(page.getByText('RECENT FOLDERS')).toBeVisible();
+    await expect(recentFoldersHeading(page)).toBeVisible();
     await expect(recentFolderButton(page)).toBeVisible();
     await expect(customSectionHeading(page, sectionName)).toBeVisible();
+  });
+
+  test('queues and applies a watched-folder rename suggestion', async () => {
+    tempHome = await mkdtemp(path.join(os.tmpdir(), 'keepdir-e2e-'));
+    const watchedDirectory = path.join(tempHome, 'watched-inbox');
+    await mkdir(watchedDirectory, { recursive: true });
+
+    const launched = await launchApp(tempHome, {
+      KEEPDIR_E2E_SELECT_DIRECTORY: watchedDirectory,
+      KEEPDIR_E2E_WATCH_RENAME_STUB: '1',
+    });
+    app = launched.app;
+    const { page } = launched;
+
+    await expect(page.getByText('WORKSPACES')).toBeVisible();
+    await page.getByText('Settings').click();
+    const settingsDialog = page.getByRole('dialog');
+    await settingsDialog.getByText('Watch Folders').click();
+    await settingsDialog.getByRole('button', { name: /add watched folder/i }).click();
+    await expect(settingsDialog.getByText(watchedDirectory)).toBeVisible();
+    await settingsDialog.getByRole('button', { name: 'close' }).click();
+
+    await writeFile(path.join(watchedDirectory, 'scan.txt'), 'watched file');
+
+    await page.getByRole('button', { name: /open watched rename queue/i }).click();
+    const queueDialog = page.getByRole('dialog');
+    await expect(queueDialog.getByText('scan.txt -> organized-scan.txt')).toBeVisible({ timeout: 20_000 });
+    await queueDialog.getByRole('checkbox', { name: /select scan.txt/i }).check();
+    await queueDialog.getByRole('button', { name: /apply selected/i }).click();
+
+    await expect.poll(async () => readdir(watchedDirectory)).toContain('organized-scan.txt');
   });
 });
