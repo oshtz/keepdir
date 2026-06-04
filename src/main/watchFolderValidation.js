@@ -125,8 +125,11 @@ function requireDirectChildFilePath(folderPath, filePath) {
     trim: true
   }));
   const relativePath = path.relative(resolvedFolderPath, resolvedFilePath);
+  const isOutsideFolder = relativePath === '..'
+    || relativePath.startsWith(`..${path.sep}`)
+    || path.isAbsolute(relativePath);
 
-  if (!relativePath || relativePath.startsWith('..') || path.isAbsolute(relativePath)) {
+  if (!relativePath || isOutsideFolder) {
     throw new Error('Watched file path must be inside watched folder');
   }
 

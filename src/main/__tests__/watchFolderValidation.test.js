@@ -2,9 +2,11 @@ const path = require('path');
 
 const {
   WATCH_FOLDER_SETTING_KEY,
+  WATCHED_RENAME_STATUSES,
   isIgnoredWatchedFileName,
   normalizeWatchFolder,
   normalizeWatchFoldersSetting,
+  normalizeWatchedRenameStatus,
   normalizeWatchedSuggestionIds,
   requireDirectChildFilePath,
   toWatchedRenameSuggestionPayload,
@@ -42,6 +44,8 @@ describe('watch folder validation', () => {
     expect(folders).toHaveLength(2);
     expect(folders[0].enabled).toBe(true);
     expect(folders[1].enabled).toBe(false);
+    expect(normalizeWatchFoldersSetting(null)).toEqual([]);
+    expect(normalizeWatchFoldersSetting(undefined)).toEqual([]);
     expect(() => normalizeWatchFoldersSetting('bad')).toThrow('Watch folders must be an array');
     expect(() => normalizeWatchFoldersSetting(Array.from({ length: 101 }, (_, index) => ({
       id: `watch-${index + 1}`,
@@ -53,6 +57,28 @@ describe('watch folder validation', () => {
     expect(() => normalizeWatchFolder({ id: '../bad', path: 'C:/Safe' })).toThrow('Watch folder id is invalid');
     expect(() => normalizeWatchFolder({ id: 'watch-1', path: '' })).toThrow('Watch folder path is required');
     expect(() => normalizeWatchedSuggestionIds(['suggestion-1', '../bad'])).toThrow('Watched suggestion id is invalid');
+  });
+
+  it('normalizes watched rename statuses from the exported status set', () => {
+    const expectedStatuses = [
+      'detected',
+      'stabilizing',
+      'queued',
+      'analyzing',
+      'suggested',
+      'error',
+      'dismissed',
+      'applied',
+      'stale'
+    ];
+
+    expect(Array.from(WATCHED_RENAME_STATUSES)).toEqual(expectedStatuses);
+    expectedStatuses.forEach((status) => {
+      expect(normalizeWatchedRenameStatus(status)).toBe(status);
+    });
+    expect(() => normalizeWatchedRenameStatus('unknown')).toThrow(
+      'Watched rename status is invalid: unknown'
+    );
   });
 
   it('requires bounded watched suggestion ids', () => {
@@ -85,6 +111,7 @@ describe('watch folder validation', () => {
   it('requires direct child file paths', () => {
     const root = path.resolve('C:/Users/Ada/Downloads');
     expect(requireDirectChildFilePath(root, path.join(root, 'receipt.pdf'))).toBe(path.join(root, 'receipt.pdf'));
+    expect(requireDirectChildFilePath(root, path.join(root, '..file.txt'))).toBe(path.join(root, '..file.txt'));
     expect(() => requireDirectChildFilePath(root, path.join(root, 'nested', 'receipt.pdf'))).toThrow('direct child');
     expect(() => requireDirectChildFilePath(root, path.resolve('C:/Users/Ada/Other/file.txt'))).toThrow('inside watched folder');
   });
