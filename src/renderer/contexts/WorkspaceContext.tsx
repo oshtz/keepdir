@@ -207,6 +207,12 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     loadWorkspaceSettings();
   }, [currentWorkspace]);
 
+  useEffect(() => {
+    window.electronAPI.setActiveWatchWorkspace(currentWorkspace?.id || null).catch((error) => {
+      console.error('Failed to sync active watch workspace:', error);
+    });
+  }, [currentWorkspace]);
+
   // Save workspace settings when they change (debounced to prevent excessive saves)
   useEffect(() => {
     const timeoutId = setTimeout(async () => {

@@ -9,6 +9,7 @@ import { useWorkspace } from "../contexts/WorkspaceContext";
 import { useOperationHistory } from "../contexts/OperationHistoryContext";
 import { useToast } from "../components/ToastNotification";
 import { useContextMenu } from "../hooks/useContextMenu";
+import Badge from "@mui/material/Badge";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import IconButton from "@mui/material/IconButton";
@@ -39,6 +40,7 @@ import StarIcon from "@mui/icons-material/Star";
 import StarBorderIcon from "@mui/icons-material/StarBorder";
 import OpenInNewIcon from "@mui/icons-material/OpenInNew";
 import FolderOpenIcon from "@mui/icons-material/FolderOpen";
+import NotificationsActiveIcon from "@mui/icons-material/NotificationsActive";
 import {
   FileInfo,
   SortSuggestions as SortSuggestionsType,
@@ -49,6 +51,8 @@ import {
 import SortSuggestions from "./SortSuggestions";
 import RenameDialog from "./RenameDialog";
 import ContextMenu from "./ContextMenu";
+import WatchedRenameQueue from "./WatchedRenameQueue";
+import { useWatchedRenameQueue } from "../hooks/useWatchedRenameQueue";
 import { DirectorySkeleton } from "./LoadingSkeletons";
 import DriveFileRenameOutlineIcon from "@mui/icons-material/DriveFileRenameOutline";
 import { getPathBreadcrumbs } from "../utils/pathBreadcrumbs";
@@ -67,6 +71,7 @@ const DirectoryExplorer: React.FC<DirectoryExplorerProps> = ({
     addFavoriteFolder,
     removeFavoriteFolder,
     favoriteFolders,
+    currentWorkspace,
     currentDirectoryPath,
     setCurrentDirectoryPath,
     viewMode,
@@ -83,6 +88,7 @@ const DirectoryExplorer: React.FC<DirectoryExplorerProps> = ({
   const [suggestions, setSuggestions] = useState<SortSuggestionsType>();
   const [error, setError] = useState<string>();
   const [renameDialogOpen, setRenameDialogOpen] = useState(false);
+  const [watchQueueOpen, setWatchQueueOpen] = useState(false);
   const [renameSuggestions, setRenameSuggestions] = useState<{
     renames: FileRename[];
   }>();
@@ -99,6 +105,7 @@ const DirectoryExplorer: React.FC<DirectoryExplorerProps> = ({
   } | null>(null);
   const lastSelectedPathRef = useRef<string | null>(null);
   const autoScrollRef = useRef<number | null>(null);
+  const watchedQueue = useWatchedRenameQueue(currentWorkspace?.id || null);
   const [dragBox, setDragBox] = useState<{
     left: number;
     top: number;
@@ -1733,6 +1740,17 @@ const DirectoryExplorer: React.FC<DirectoryExplorerProps> = ({
           >
             Sort
           </Button>
+          <IconButton
+            className="enhanced-icon-button"
+            onClick={() => setWatchQueueOpen(true)}
+            size="small"
+            aria-label="Open watched rename queue"
+            title="Watched Rename Queue"
+          >
+            <Badge badgeContent={watchedQueue.suggestions.length} color="primary">
+              <NotificationsActiveIcon />
+            </Badge>
+          </IconButton>
         </Box>
       </Box>
 
@@ -1842,6 +1860,11 @@ const DirectoryExplorer: React.FC<DirectoryExplorerProps> = ({
           const parts = path.split(/[\\/]/);
           return parts[parts.length - 1];
         })}
+      />
+      <WatchedRenameQueue
+        workspaceId={currentWorkspace?.id || null}
+        open={watchQueueOpen}
+        onClose={() => setWatchQueueOpen(false)}
       />
 
       <ContextMenu
