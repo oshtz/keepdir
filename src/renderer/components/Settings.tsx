@@ -33,6 +33,7 @@ import {
 import useBackgroundFetch from "../hooks/useBackgroundFetch";
 import OperationHistoryPanel from "./OperationHistoryPanel";
 import UpdateStatus from "./UpdateStatus";
+import WatchFoldersSettings from "./WatchFoldersSettings";
 
 interface SettingsProps {
   open: boolean;
@@ -993,6 +994,9 @@ const Settings: React.FC<SettingsProps> = ({
             </Box>
           </Box>
         );
+
+      case "watch-folders":
+        return <WatchFoldersSettings workspaceId={currentWorkspace?.id || null} />;
 
       case "sections":
         return (
@@ -2048,6 +2052,7 @@ const Settings: React.FC<SettingsProps> = ({
             { id: "general", label: "General", icon: null },
             { id: "themes", label: "Workspace Themes", icon: null },
             { id: "workspace", label: "Workspace", icon: null },
+            { id: "watch-folders", label: "Watch Folders", icon: null },
             { id: "sections", label: "Custom Sections", icon: null },
             { id: "history", label: "Operation History", icon: null },
             { id: "airules", label: "AI Rules & Presets", icon: null },
