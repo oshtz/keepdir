@@ -3,6 +3,14 @@ const path = require('path');
 const crypto = require('crypto');
 const fs = require('fs');
 
+const {
+  WATCH_FOLDER_SETTING_KEY,
+  normalizeWatchFolder,
+  normalizeWatchFoldersSetting,
+  normalizeWatchedRenameStatus,
+  normalizeWatchedSuggestionIds
+} = require('./watchFolderValidation');
+
 const debugLog = (...args) => {
   if (process.env.KEEPDIR_DEBUG === '1') {
     console.debug(...args);
@@ -153,6 +161,28 @@ class Database {
           PRIMARY KEY (workspace_id, key)
         )
       `);
+
+      this.db.run(`
+        CREATE TABLE IF NOT EXISTS watched_rename_suggestions (
+          id TEXT PRIMARY KEY,
+          workspace_id TEXT NOT NULL,
+          folder_path TEXT NOT NULL,
+          file_path TEXT NOT NULL,
+          original_name TEXT NOT NULL,
+          suggested_name TEXT,
+          reason TEXT,
+          status TEXT CHECK(status IN ('detected', 'stabilizing', 'queued', 'analyzing', 'suggested', 'error', 'dismissed', 'applied', 'stale')) NOT NULL,
+          file_size INTEGER NOT NULL DEFAULT 0,
+          file_mtime_ms INTEGER NOT NULL DEFAULT 0,
+          error_message TEXT,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
+        )
+      `);
+      this.db.run('CREATE UNIQUE INDEX IF NOT EXISTS idx_watched_rename_active_file ON watched_rename_suggestions(workspace_id, file_path) WHERE status NOT IN (\'dismissed\', \'applied\')');
+      this.db.run('CREATE INDEX IF NOT EXISTS idx_watched_rename_workspace_status ON watched_rename_suggestions(workspace_id, status)');
+      this.db.run('CREATE INDEX IF NOT EXISTS idx_watched_rename_updated ON watched_rename_suggestions(updated_at)');
 
       // Create custom sections table
       this.db.run(`
@@ -1674,14 +1704,119 @@ class Database {
     });
   }
 
+  async getWatchFolders(workspaceId) {
+    const value = await this.getWorkspaceSetting(workspaceId, WATCH_FOLDER_SETTING_KEY);
+    return normalizeWatchFoldersSetting(value || []);
+  }
+
+  async saveWatchFolder(workspaceId, folder) {
+    const normalized = normalizeWatchFolder(folder);
+    const folders = await this.getWatchFolders(workspaceId);
+    const nextFolders = folders.some((item) => item.id === normalized.id)
+      ? folders.map((item) => item.id === normalized.id ? normalized : item)
+      : [...folders, normalized];
+    await this.saveWorkspaceSetting(workspaceId, WATCH_FOLDER_SETTING_KEY, nextFolders);
+    return { success: true, folder: normalized };
+  }
+
+  async removeWatchFolder(workspaceId, folderId) {
+    const id = normalizeWatchedSuggestionIds([folderId])[0];
+    const folders = await this.getWatchFolders(workspaceId);
+    await this.saveWorkspaceSetting(
+      workspaceId,
+      WATCH_FOLDER_SETTING_KEY,
+      folders.filter((folder) => folder.id !== id)
+    );
+    return { success: true };
+  }
+
+  async setWatchFolderEnabled(workspaceId, folderId, enabled) {
+    const id = normalizeWatchedSuggestionIds([folderId])[0];
+    const folders = await this.getWatchFolders(workspaceId);
+    const nextFolders = folders.map((folder) => (
+      folder.id === id ? { ...folder, enabled: enabled === true } : folder
+    ));
+    await this.saveWorkspaceSetting(workspaceId, WATCH_FOLDER_SETTING_KEY, nextFolders);
+    return { success: true };
+  }
+
+  async upsertWatchedRenameSuggestion(suggestion) {
+    const status = normalizeWatchedRenameStatus(suggestion.status);
+    await this._run(
+      `INSERT INTO watched_rename_suggestions (
+         id, workspace_id, folder_path, file_path, original_name,
+         suggested_name, reason, status, file_size, file_mtime_ms, error_message
+       )
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(workspace_id, file_path) WHERE status NOT IN ('dismissed', 'applied')
+       DO UPDATE SET
+         suggested_name = excluded.suggested_name,
+         reason = excluded.reason,
+         status = excluded.status,
+         file_size = excluded.file_size,
+         file_mtime_ms = excluded.file_mtime_ms,
+         error_message = excluded.error_message,
+         updated_at = CURRENT_TIMESTAMP`,
+      [
+        suggestion.id,
+        suggestion.workspaceId,
+        this._normalizePath(suggestion.folderPath),
+        this._normalizePath(suggestion.filePath),
+        this._normalizeFilename(suggestion.originalName),
+        suggestion.suggestedName || null,
+        suggestion.reason || null,
+        status,
+        Number(suggestion.fileSize) || 0,
+        Number(suggestion.fileMtimeMs) || 0,
+        suggestion.errorMessage || null
+      ]
+    );
+  }
+
+  async getWatchedRenameSuggestions(workspaceId, statuses = ['queued', 'analyzing', 'suggested', 'error', 'stale']) {
+    const normalizedStatuses = statuses.map(normalizeWatchedRenameStatus);
+    const placeholders = normalizedStatuses.map(() => '?').join(', ');
+    return this._all(
+      `SELECT * FROM watched_rename_suggestions
+       WHERE workspace_id = ? AND status IN (${placeholders})
+       ORDER BY updated_at DESC, created_at DESC`,
+      [workspaceId, ...normalizedStatuses]
+    );
+  }
+
+  async getWatchedRenameSuggestionsByIds(workspaceId, suggestionIds) {
+    const ids = normalizeWatchedSuggestionIds(suggestionIds);
+    const placeholders = ids.map(() => '?').join(', ');
+    return this._all(
+      `SELECT * FROM watched_rename_suggestions
+       WHERE workspace_id = ? AND id IN (${placeholders})
+       ORDER BY updated_at DESC, created_at DESC`,
+      [workspaceId, ...ids]
+    );
+  }
+
+  async updateWatchedRenameSuggestionStatus(workspaceId, suggestionId, status, errorMessage = null) {
+    const id = normalizeWatchedSuggestionIds([suggestionId])[0];
+    const normalizedStatus = normalizeWatchedRenameStatus(status);
+    await this._run(
+      `UPDATE watched_rename_suggestions
+       SET status = ?, error_message = ?, updated_at = CURRENT_TIMESTAMP
+       WHERE workspace_id = ? AND id = ?`,
+      [normalizedStatus, errorMessage, workspaceId, id]
+    );
+  }
+
   close() {
     debugLog('Closing database connection');
-    this.db.close((err) => {
-      if (err) {
-        console.error('Error closing database:', err);
-      } else {
-        debugLog('Database connection closed successfully');
-      }
+    return new Promise((resolve) => {
+      this.db.close((err) => {
+        if (err) {
+          console.error('Error closing database:', err);
+        } else {
+          debugLog('Database connection closed successfully');
+        }
+        resolve();
+      });
     });
   }
 }
