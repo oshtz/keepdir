@@ -51,6 +51,13 @@ function parseSettingsRows(rows = []) {
   return settings;
 }
 
+function getSafeSettingEntries(settings = {}) {
+  if (!settings || typeof settings !== 'object') {
+    return [];
+  }
+  return Object.entries(settings).filter(([key]) => isSafeSettingKey(key));
+}
+
 function parseJsonArrayValue(value) {
   const parsed = parseJsonValue(value, []);
   return Array.isArray(parsed) ? parsed : [];
@@ -211,15 +218,22 @@ class Database {
 
       // Migrate data from old table if it exists
       this.db.get("SELECT name FROM sqlite_master WHERE type='table' AND name='processed_files'", (err, row) => {
+        if (err) {
+          console.error('Failed to check legacy processed_files table:', err);
+          return;
+        }
+
         if (row) {
           // Old table exists, migrate data
-          this.db.run(`
+          this.db.exec(`
             INSERT OR IGNORE INTO processed_renames 
-            SELECT * FROM processed_files
-          `);
-
-          // Drop old table after migration
-          this.db.run(`DROP TABLE processed_files`);
+            SELECT * FROM processed_files;
+            DROP TABLE processed_files;
+          `, (migrationErr) => {
+            if (migrationErr) {
+              console.error('Failed to migrate legacy processed_files table:', migrationErr);
+            }
+          });
         }
       });
 
@@ -1188,14 +1202,11 @@ class Database {
    * Delete a workspace and its settings
    */
   async deleteWorkspace(id) {
-    return new Promise((resolve, reject) => {
-      this.db.run('DELETE FROM workspaces WHERE id = ?', [id], (err) => {
-        if (err) {
-          reject(err);
-          return;
-        }
-        resolve();
-      });
+    return this._withTransaction(async () => {
+      await this._run('DELETE FROM workspace_settings WHERE workspace_id = ?', [id]);
+      await this._run('DELETE FROM custom_sections WHERE workspace_id = ?', [id]);
+      await this._run('DELETE FROM watched_rename_suggestions WHERE workspace_id = ?', [id]);
+      await this._run('DELETE FROM workspaces WHERE id = ?', [id]);
     });
   }
 
@@ -1259,6 +1270,7 @@ class Database {
       throw new Error('Invalid workspace backup data.');
     }
 
+    const workspaceSettingEntries = getSafeSettingEntries(workspaceData.settings || {});
     let workspaceId = workspaceData.workspace.id;
     if (generateNewId) {
       workspaceId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
@@ -1287,7 +1299,7 @@ class Database {
         await this._run('DELETE FROM custom_sections WHERE workspace_id = ?', [workspaceId]);
       }
 
-      for (const [key, value] of Object.entries(workspaceData.settings || {})) {
+      for (const [key, value] of workspaceSettingEntries) {
         await this._run(
           `INSERT INTO workspace_settings (workspace_id, key, value, updated_at)
            VALUES (?, ?, ?, CURRENT_TIMESTAMP)
@@ -1326,7 +1338,7 @@ class Database {
         workspaceId,
         imported: {
           workspace: workspaceData.workspace.name,
-          settings: Object.keys(workspaceData.settings || {}).length,
+          settings: workspaceSettingEntries.length,
           customSections: (workspaceData.customSections || []).length
         }
       };
@@ -1365,13 +1377,18 @@ class Database {
               return;
             }
 
-            // Group settings by workspace
-            const settingsByWorkspace = {};
+            // Group settings by workspace through the same safe-key parser used elsewhere.
+            const settingsRowsByWorkspace = {};
             workspaceSettings.forEach(setting => {
-              if (!settingsByWorkspace[setting.workspace_id]) {
-                settingsByWorkspace[setting.workspace_id] = {};
+              if (!settingsRowsByWorkspace[setting.workspace_id]) {
+                settingsRowsByWorkspace[setting.workspace_id] = [];
               }
-              settingsByWorkspace[setting.workspace_id][setting.key] = parseJsonValue(setting.value);
+              settingsRowsByWorkspace[setting.workspace_id].push(setting);
+            });
+
+            const settingsByWorkspace = {};
+            Object.entries(settingsRowsByWorkspace).forEach(([workspaceId, rows]) => {
+              settingsByWorkspace[workspaceId] = parseSettingsRows(rows);
             });
 
             const sectionsByWorkspace = {};
@@ -1411,6 +1428,7 @@ class Database {
    */
   async importAllData(backupData, options = {}) {
     const { overwriteExisting = false } = options;
+    const globalSettingEntries = getSafeSettingEntries(backupData.settings || {});
 
     const results = {
       success: true,
@@ -1423,12 +1441,12 @@ class Database {
     };
 
     return this._withTransaction(async () => {
-      if (backupData.settings && Object.keys(backupData.settings).length > 0) {
+      if (globalSettingEntries.length > 0) {
         if (overwriteExisting) {
           await this._run('DELETE FROM settings');
         }
 
-        for (const [key, value] of Object.entries(backupData.settings)) {
+        for (const [key, value] of globalSettingEntries) {
           const insertResult = await this._run(
             `INSERT OR ${overwriteExisting ? 'REPLACE' : 'IGNORE'} INTO settings (key, value, updated_at)
              VALUES (?, ?, CURRENT_TIMESTAMP)`,
@@ -1466,7 +1484,7 @@ class Database {
             );
           }
 
-          for (const [key, value] of Object.entries(workspaceData.settings || {})) {
+          for (const [key, value] of getSafeSettingEntries(workspaceData.settings || {})) {
             await this._run(
               `INSERT OR ${overwriteExisting ? 'REPLACE' : 'IGNORE'} INTO workspace_settings (workspace_id, key, value, updated_at)
                VALUES (?, ?, ?, CURRENT_TIMESTAMP)`,
