@@ -1,6 +1,6 @@
 {
   "name": "keepdir",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "keepdir Desktop Application",
   "main": "src/main/main.js",
   "scripts": {
