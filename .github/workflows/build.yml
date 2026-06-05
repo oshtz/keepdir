@@ -83,7 +83,8 @@ jobs:
             keepdir-portable-windows.zip.sha256
 
   build-macos:
-    runs-on: macos-latest
+    # Pin the macOS ARM image so release builds are not changed by macos-latest redirects.
+    runs-on: macos-15
 
     steps:
       - name: Checkout code
