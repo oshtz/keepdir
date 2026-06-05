@@ -4,20 +4,27 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      replace_existing_release:
+        description: 'Replace assets on an existing release for the current package version'
+        required: false
+        type: boolean
+        default: false
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build-windows:
-    runs-on: windows-latest
+    # Pin the Windows image so release builds are not changed by windows-latest redirects.
+    runs-on: windows-2025
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: '20'
 
@@ -68,7 +75,7 @@ jobs:
           Write-Host "Portable zip checksum created"
 
       - name: Upload portable zip
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: keepdir-portable-windows
           path: |
@@ -80,10 +87,10 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: '20'
 
@@ -179,7 +186,7 @@ jobs:
           done
 
       - name: Upload macOS artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: keepdir-macos
           path: |
@@ -198,13 +205,15 @@ jobs:
     needs: [build-windows, build-macos]
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Download release artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: release-artifacts
 
@@ -244,7 +253,7 @@ jobs:
 
       - name: Check for existing release
         id: release_check
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const tag = '${{ steps.release_tag.outputs.tag }}';
@@ -265,7 +274,7 @@ jobs:
 
       - name: Create GitHub release
         if: steps.release_check.outputs.exists != 'true'
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ steps.release_tag.outputs.tag }}
           name: Release ${{ steps.release_tag.outputs.tag }}
@@ -273,9 +282,15 @@ jobs:
           generate_release_notes: true
           files: release-artifacts/**/*
 
+      - name: Skip existing release upload
+        if: steps.release_check.outputs.exists == 'true' && (github.event_name != 'workflow_dispatch' || inputs.replace_existing_release != true)
+        run: |
+          echo "Release ${{ steps.release_tag.outputs.tag }} already exists; skipping asset upload."
+          echo "Run this workflow manually with replace_existing_release=true to replace existing release assets."
+
       - name: Upload to existing release
-        if: steps.release_check.outputs.exists == 'true'
-        uses: softprops/action-gh-release@v2
+        if: steps.release_check.outputs.exists == 'true' && github.event_name == 'workflow_dispatch' && inputs.replace_existing_release == true
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ steps.release_tag.outputs.tag }}
           files: release-artifacts/**/*
