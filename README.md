@@ -145,10 +145,6 @@ This project explores:
 - Image processing and compression with Sharp
 - Drag-and-drop interfaces with @dnd-kit
 
-## Architecture
-
-See [ARCHITECTURE.md](ARCHITECTURE.md) for the current process, storage, IPC, and testing boundaries.
-
 ## Contributions welcome
 
 ## License

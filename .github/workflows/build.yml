@@ -40,47 +40,27 @@ jobs:
       - name: Build webpack bundle
         run: npm run build
 
-      - name: Package Electron app
-        run: npm run package
-
-      - name: Create portable zip
+      - name: Build Windows installer
         shell: pwsh
         run: |
-          $packagedDir = Get-ChildItem -Path "out" -Directory | Where-Object { $_.Name -like "keepdir-win32-*" } | Select-Object -First 1
-          if (-not $packagedDir) {
-            throw "Packaged app directory not found in out/"
+          npm run make -- --platform win32
+          if ($LASTEXITCODE -ne 0) {
+            exit $LASTEXITCODE
           }
-          Write-Host "Found packaged app: $($packagedDir.FullName)"
 
-          # Copy the packaged app to a stable directory before zipping.
-          $portableDir = Join-Path $PWD "keepdir-portable"
-          if (Test-Path $portableDir) {
-            Remove-Item $portableDir -Recurse -Force
+          $installer = Get-ChildItem -Path "out\make" -Filter "KeepDir-Setup-*.exe" -File -Recurse | Select-Object -First 1
+          if (-not $installer) {
+            throw "Windows installer was not created in out/make"
           }
-          Copy-Item -Path $packagedDir.FullName -Destination $portableDir -Recurse
 
-          # Zip the app contents so keepdir.exe is at the archive root.
-          $zipPath = Join-Path $PWD "keepdir-portable-windows.zip"
-          $portableContents = Get-ChildItem -LiteralPath $portableDir -Force
-          if (-not $portableContents) {
-            throw "Portable app directory is empty"
-          }
-          Compress-Archive -Path $portableContents.FullName -DestinationPath $zipPath -Force
+          $size = [math]::Round($installer.Length / 1MB, 2)
+          Write-Host "Windows installer created: $($installer.FullName) ($size MB)"
 
-          $size = [math]::Round((Get-Item $zipPath).Length / 1MB, 2)
-          Write-Host "Portable zip created: $size MB"
-
-          $hash = (Get-FileHash -Path $zipPath -Algorithm SHA256).Hash.ToLowerInvariant()
-          "$hash  keepdir-portable-windows.zip" | Set-Content -Path "$zipPath.sha256" -Encoding ascii
-          Write-Host "Portable zip checksum created"
-
-      - name: Upload portable zip
+      - name: Upload Windows installer
         uses: actions/upload-artifact@v7
         with:
-          name: keepdir-portable-windows
-          path: |
-            keepdir-portable-windows.zip
-            keepdir-portable-windows.zip.sha256
+          name: keepdir-windows-installer
+          path: out/make/**/KeepDir-Setup-*.exe
 
   build-macos:
     # Pin the macOS ARM image so release builds are not changed by macos-latest redirects.
@@ -160,40 +140,32 @@ jobs:
             exit 0
           fi
 
-          ZIP_FILE=$(find out/make -name "*.zip" -type f | head -1)
-          if [ -z "$ZIP_FILE" ]; then
-            echo "::warning::No zip file found for notarization"
+          DMG_FILE=$(find out/make -name "*.dmg" -type f | head -1)
+          if [ -z "$DMG_FILE" ]; then
+            echo "::warning::No DMG file found for notarization"
             exit 0
           fi
 
-          echo "Notarizing: $ZIP_FILE"
+          echo "Notarizing: $DMG_FILE"
 
           xcrun notarytool store-credentials "notarytool-profile" \
             --apple-id "$APPLE_ID" \
             --team-id "$APPLE_TEAM_ID" \
             --password "$APPLE_PASSWORD"
 
-          xcrun notarytool submit "$ZIP_FILE" \
+          xcrun notarytool submit "$DMG_FILE" \
             --keychain-profile "notarytool-profile" \
             --wait
 
+          xcrun stapler staple "$DMG_FILE"
+
           echo "Notarization completed"
 
-      - name: Generate macOS checksums
-        run: |
-          find out/make -type f \( -name "*.zip" -o -name "*.dmg" \) -print0 | while IFS= read -r -d '' file; do
-            shasum -a 256 "$file" > "$file.sha256"
-            echo "Created checksum for $file"
-          done
-
-      - name: Upload macOS artifacts
+      - name: Upload macOS DMG
         uses: actions/upload-artifact@v7
         with:
-          name: keepdir-macos
-          path: |
-            out/make/**/*.zip
-            out/make/**/*.dmg
-            out/make/**/*.sha256
+          name: keepdir-macos-dmg
+          path: out/make/**/*.dmg
 
       - name: Cleanup keychain
         if: always()
@@ -232,25 +204,29 @@ jobs:
       - name: Verify release artifacts
         run: |
           set -euo pipefail
-          mapfile -t artifacts < <(find release-artifacts -type f \( -name "*.zip" -o -name "*.dmg" \) | sort)
-          if [ "${#artifacts[@]}" -eq 0 ]; then
-            echo "No release archives found"
+          mapfile -t installers < <(find release-artifacts -type f \( -name "*.exe" -o -name "*.dmg" \) | sort)
+          mapfile -t unexpected < <(find release-artifacts -type f ! \( -name "*.exe" -o -name "*.dmg" \) | sort)
+
+          if [ "${#unexpected[@]}" -ne 0 ]; then
+            printf 'Unexpected release artifact: %s\n' "${unexpected[@]}"
             exit 1
           fi
 
-          for artifact in "${artifacts[@]}"; do
-            checksum_file="$artifact.sha256"
-            if [ ! -f "$checksum_file" ]; then
-              echo "Missing checksum for $artifact"
-              exit 1
-            fi
-            expected=$(awk '{print tolower($1)}' "$checksum_file")
-            actual=$(sha256sum "$artifact" | awk '{print tolower($1)}')
-            if [ "$expected" != "$actual" ]; then
-              echo "Checksum mismatch for $artifact"
-              exit 1
-            fi
-          done
+          if [ "${#installers[@]}" -ne 2 ]; then
+            echo "Expected exactly 2 release installers (.exe and .dmg), found ${#installers[@]}"
+            printf 'Installer candidate: %s\n' "${installers[@]}"
+            exit 1
+          fi
+
+          exe_count=$(printf '%s\n' "${installers[@]}" | grep -Ec '\.exe$' || true)
+          dmg_count=$(printf '%s\n' "${installers[@]}" | grep -Ec '\.dmg$' || true)
+          if [ "$exe_count" -ne 1 ] || [ "$dmg_count" -ne 1 ]; then
+            echo "Expected one Windows installer EXE and one macOS DMG"
+            printf 'Installer candidate: %s\n' "${installers[@]}"
+            exit 1
+          fi
+
+          sha256sum "${installers[@]}"
 
       - name: Check for existing release
         id: release_check

@@ -12,18 +12,16 @@ let lastUpdateInfo = null;
 let downloadedUpdatePath = null;
 let downloadedUpdateSha256 = null;
 
-// Platform-specific asset patterns
-// Windows: exact match for portable zip
-// macOS: match any zip containing 'darwin' (Electron Forge naming convention)
+// Platform-specific installer asset patterns
 const ASSET_PATTERNS = {
   win32: {
-    exact: 'keepdir-portable-windows.zip',
-    pattern: /\.zip$/i
+    extension: '.exe',
+    pattern: /^KeepDir-Setup-.*\.exe$/i,
   },
   darwin: {
-    exact: null, // No exact match, use pattern
-    pattern: /keepdir.*darwin.*\.zip$/i
-  }
+    extension: '.dmg',
+    pattern: /^KeepDir-.*\.dmg$/i,
+  },
 };
 
 /**
@@ -33,13 +31,18 @@ function getUpdateDir() {
   return path.join(app.getPath('userData'), UPDATE_DIR_NAME);
 }
 
-function getSafeUpdatePath(assetName, version) {
+function getSafeUpdatePath(assetName, version, fallbackExtension) {
   const updateDir = path.resolve(getUpdateDir());
-  const fallbackName = `keepdir-${version}.zip`;
+  const extension = fallbackExtension || '.bin';
+  const fallbackName = `keepdir-${version}${extension}`;
   const fileName = path.basename(assetName || fallbackName);
+  const allowedExtensions = new Set(
+    Object.values(ASSET_PATTERNS).map((config) => config.extension)
+  );
+  const fileExtension = path.extname(fileName).toLowerCase();
 
-  if (!fileName || !fileName.toLowerCase().endsWith('.zip')) {
-    throw new Error('Update asset must be a zip file.');
+  if (!fileName || !allowedExtensions.has(fileExtension)) {
+    throw new Error('Update asset must be a supported installer file.');
   }
 
   const updatePath = path.resolve(updateDir, fileName);
@@ -67,39 +70,13 @@ function isValidSha256(value) {
   return typeof value === 'string' && /^[a-f0-9]{64}$/i.test(value.trim());
 }
 
-function findChecksumAsset(assets, updateAsset) {
-  const expectedNames = [
-    `${updateAsset.name}.sha256`,
-    `${updateAsset.name}.sha256sum`,
-    'SHA256SUMS',
-    'checksums.txt'
-  ].map(name => name.toLowerCase());
-
-  return assets.find(asset => expectedNames.includes((asset.name || '').toLowerCase())) || null;
-}
-
-function parseChecksumText(text, assetName) {
-  const trimmed = String(text || '').trim();
-  if (isValidSha256(trimmed)) {
-    return trimmed.toLowerCase();
+function parseAssetDigest(digest) {
+  if (typeof digest !== 'string') {
+    return null;
   }
 
-  const normalizedAssetName = path.basename(assetName || '').toLowerCase();
-  const lines = trimmed.split(/\r?\n/);
-
-  for (const line of lines) {
-    const match = line.trim().match(/^([a-f0-9]{64})\s+\*?(.+)$/i);
-    if (!match) {
-      continue;
-    }
-
-    const candidateName = path.basename(match[2].trim()).toLowerCase();
-    if (candidateName === normalizedAssetName) {
-      return match[1].toLowerCase();
-    }
-  }
-
-  throw new Error(`Checksum file does not contain a SHA-256 digest for ${assetName}.`);
+  const match = digest.trim().match(/^sha256:([a-f0-9]{64})$/i);
+  return match ? match[1].toLowerCase() : null;
 }
 
 function computeFileSha256(filePath) {
@@ -118,22 +95,11 @@ function computeFileSha256(filePath) {
 }
 
 async function fetchExpectedSha256(updateInfo) {
-  if (updateInfo.sha256) {
-    return updateInfo.sha256;
+  if (!isValidSha256(updateInfo.sha256)) {
+    throw new Error('Trusted update checksum is missing.');
   }
 
-  if (!updateInfo.checksumUrl || !isTrustedDownloadUrl(updateInfo.checksumUrl)) {
-    throw new Error('Release checksum URL is not trusted.');
-  }
-
-  const response = await axios.get(updateInfo.checksumUrl, {
-    responseType: 'text',
-    timeout: 30000,
-    headers: {
-      'User-Agent': `keepdir/${app.getVersion()}`
-    }
-  });
-  return parseChecksumText(response.data, updateInfo.assetName);
+  return updateInfo.sha256.toLowerCase();
 }
 
 function assertMatchesLastUpdate(updateInfo) {
@@ -145,9 +111,11 @@ function assertMatchesLastUpdate(updateInfo) {
     return lastUpdateInfo;
   }
 
-  for (const key of ['version', 'downloadUrl', 'assetName', 'checksumUrl']) {
+  for (const key of ['version', 'downloadUrl', 'assetName', 'sha256']) {
     if (updateInfo[key] && updateInfo[key] !== lastUpdateInfo[key]) {
-      throw new Error('Update details do not match the latest trusted update check.');
+      throw new Error(
+        'Update details do not match the latest trusted update check.'
+      );
     }
   }
 
@@ -201,10 +169,10 @@ async function checkForUpdate(_mainWindow) {
 
     const response = await axios.get(apiUrl, {
       headers: {
-        'Accept': 'application/vnd.github.v3+json',
-        'User-Agent': `keepdir/${currentVersion}`
+        Accept: 'application/vnd.github.v3+json',
+        'User-Agent': `keepdir/${currentVersion}`,
       },
-      timeout: 10000
+      timeout: 10000,
     });
 
     const release = response.data;
@@ -227,30 +195,17 @@ async function checkForUpdate(_mainWindow) {
       return { error: `Auto-update is not supported on ${process.platform}.` };
     }
 
-    let asset = null;
-
-    // Try exact match first
-    if (platformConfig.exact) {
-      asset = assets.find(a => a.name === platformConfig.exact);
-    }
-
-    // Fall back to pattern match
-    if (!asset && platformConfig.pattern) {
-      asset = assets.find(a => platformConfig.pattern.test(a.name));
-    }
-
-    // Last resort: any zip file
-    if (!asset) {
-      asset = assets.find(a => a.name.toLowerCase().endsWith('.zip'));
-    }
+    let asset = assets.find((a) => platformConfig.pattern.test(a.name || ''));
 
     if (!asset) {
       return { error: 'No compatible update asset found for this platform.' };
     }
 
-    const checksumAsset = findChecksumAsset(assets, asset);
-    if (!checksumAsset) {
-      return { error: `No SHA-256 checksum asset found for ${asset.name}.` };
+    const sha256 = parseAssetDigest(asset.digest);
+    if (!sha256) {
+      return {
+        error: `Release asset SHA-256 digest is missing for ${asset.name}.`,
+      };
     }
 
     const updateInfo = {
@@ -260,20 +215,15 @@ async function checkForUpdate(_mainWindow) {
       downloadUrl: asset.browser_download_url,
       assetName: asset.name,
       assetSize: asset.size,
-      checksumUrl: checksumAsset.browser_download_url,
-      checksumAssetName: checksumAsset.name
+      sha256,
     };
 
     if (!isTrustedDownloadUrl(updateInfo.downloadUrl)) {
       return { error: 'Release asset URL is not trusted.' };
     }
-    if (!isTrustedDownloadUrl(updateInfo.checksumUrl)) {
-      return { error: 'Release checksum URL is not trusted.' };
-    }
-
     lastUpdateInfo = updateInfo;
     return {
-      updateInfo
+      updateInfo,
     };
   } catch (error) {
     if (error.response) {
@@ -281,7 +231,9 @@ async function checkForUpdate(_mainWindow) {
         return { error: 'No releases found.' };
       }
       if (error.response.status === 403) {
-        return { error: 'GitHub API rate limit exceeded. Please try again later.' };
+        return {
+          error: 'GitHub API rate limit exceeded. Please try again later.',
+        };
       }
     }
     console.error('Update check failed:', error.message);
@@ -313,7 +265,12 @@ async function downloadUpdate(updateInfo, mainWindow) {
     }
 
     // Determine filename
-    const updatePath = getSafeUpdatePath(trustedUpdateInfo.assetName, trustedUpdateInfo.version);
+    const platformConfig = ASSET_PATTERNS[process.platform];
+    const updatePath = getSafeUpdatePath(
+      trustedUpdateInfo.assetName,
+      trustedUpdateInfo.version,
+      platformConfig && platformConfig.extension
+    );
     downloadedUpdatePath = null;
     downloadedUpdateSha256 = null;
     const expectedSha256 = await fetchExpectedSha256(trustedUpdateInfo);
@@ -325,11 +282,14 @@ async function downloadUpdate(updateInfo, mainWindow) {
       responseType: 'stream',
       timeout: 300000, // 5 minute timeout for large files
       headers: {
-        'User-Agent': `keepdir/${app.getVersion()}`
-      }
+        'User-Agent': `keepdir/${app.getVersion()}`,
+      },
     });
 
-    const totalLength = parseInt(response.headers['content-length'], 10) || trustedUpdateInfo.assetSize || 0;
+    const totalLength =
+      parseInt(response.headers['content-length'], 10) ||
+      trustedUpdateInfo.assetSize ||
+      0;
     let downloaded = 0;
     const hash = crypto.createHash('sha256');
 
@@ -338,14 +298,15 @@ async function downloadUpdate(updateInfo, mainWindow) {
     response.data.on('data', (chunk) => {
       downloaded += chunk.length;
       hash.update(chunk);
-      const percent = totalLength > 0 ? Math.round((downloaded / totalLength) * 100) : 0;
+      const percent =
+        totalLength > 0 ? Math.round((downloaded / totalLength) * 100) : 0;
 
       // Send progress to renderer
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('update-download-progress', {
           percent,
           downloaded,
-          total: totalLength
+          total: totalLength,
         });
       }
     });
@@ -361,14 +322,25 @@ async function downloadUpdate(updateInfo, mainWindow) {
       };
 
       writer.on('finish', () => {
-        if (trustedUpdateInfo.assetSize && downloaded !== trustedUpdateInfo.assetSize) {
-          rejectAndCleanup(new Error('Downloaded update size did not match the release asset size.'));
+        if (
+          trustedUpdateInfo.assetSize &&
+          downloaded !== trustedUpdateInfo.assetSize
+        ) {
+          rejectAndCleanup(
+            new Error(
+              'Downloaded update size did not match the release asset size.'
+            )
+          );
           return;
         }
 
         const actualSha256 = hash.digest('hex');
         if (actualSha256 !== expectedSha256) {
-          rejectAndCleanup(new Error('Downloaded update checksum did not match the release checksum.'));
+          rejectAndCleanup(
+            new Error(
+              'Downloaded update checksum did not match the release checksum.'
+            )
+          );
           return;
         }
         resolve();
@@ -404,14 +376,19 @@ async function installUpdate(updatePath) {
       return { error: 'Download the trusted update before installing.' };
     }
     if (!downloadedUpdateSha256) {
-      return { error: 'Trusted update checksum is missing. Download the update again.' };
+      return {
+        error: 'Trusted update checksum is missing. Download the update again.',
+      };
     }
 
     const updateDir = path.resolve(getUpdateDir());
     const resolvedUpdatePath = path.resolve(updatePath || '');
     const expectedUpdatePath = path.resolve(downloadedUpdatePath);
 
-    if (resolvedUpdatePath !== expectedUpdatePath || path.dirname(resolvedUpdatePath) !== updateDir) {
+    if (
+      resolvedUpdatePath !== expectedUpdatePath ||
+      path.dirname(resolvedUpdatePath) !== updateDir
+    ) {
       return { error: 'Update file does not match the trusted download.' };
     }
 
@@ -426,62 +403,36 @@ async function installUpdate(updatePath) {
 
     const currentSha256 = await computeFileSha256(resolvedUpdatePath);
     if (currentSha256 !== downloadedUpdateSha256) {
-      return { error: 'Update file checksum no longer matches the trusted download.' };
+      return {
+        error: 'Update file checksum no longer matches the trusted download.',
+      };
     }
 
-    const currentExe = process.execPath;
-    const currentDir = path.dirname(currentExe);
     const pid = process.pid;
 
     if (process.platform === 'win32') {
-      // Windows: Use PowerShell to wait for exit, extract, and restart
+      // Windows: wait for this process to exit, then open the verified installer.
       const script = `
         $ErrorActionPreference = 'Stop'
         $procId = ${pid}
-        $zipPath = '${resolvedUpdatePath.replace(/'/g, "''")}'
-        $targetDir = '${currentDir.replace(/'/g, "''")}'
-        $tempDir = Join-Path ([System.IO.Path]::GetTempPath()) ("keepdir-update-" + [guid]::NewGuid().ToString("N"))
+        $installerPath = '${resolvedUpdatePath.replace(/'/g, "''")}'
 
-        try {
-            New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
-
-            # Wait for app to exit
-            while (Get-Process -Id $procId -ErrorAction SilentlyContinue) {
-                Start-Sleep -Milliseconds 200
-            }
-
-            # Small delay to ensure file handles are released
-            Start-Sleep -Seconds 1
-
-            # Extract to a temp directory first so both flat and nested archives install cleanly.
-            Expand-Archive -Path $zipPath -DestinationPath $tempDir -Force
-
-            $sourceExe = Get-ChildItem -Path $tempDir -Filter 'keepdir.exe' -File -Recurse | Select-Object -First 1
-            if (-not $sourceExe) {
-                throw 'Updated executable not found in archive.'
-            }
-
-            $sourceDir = Split-Path -Parent $sourceExe.FullName
-            Get-ChildItem -LiteralPath $sourceDir -Force | Copy-Item -Destination $targetDir -Recurse -Force
-
-            $exePath = Join-Path $targetDir 'keepdir.exe'
-            if (-not (Test-Path $exePath)) {
-                throw 'Updated executable was not installed.'
-            }
-            Start-Process $exePath
-        } finally {
-            if (Test-Path $tempDir) {
-                Remove-Item $tempDir -Recurse -Force -ErrorAction SilentlyContinue
-            }
-            Remove-Item $zipPath -Force -ErrorAction SilentlyContinue
+        while (Get-Process -Id $procId -ErrorAction SilentlyContinue) {
+            Start-Sleep -Milliseconds 200
         }
+
+        Start-Process -FilePath $installerPath
       `;
 
-      spawn('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', script], {
-        detached: true,
-        stdio: 'ignore',
-        windowsHide: true
-      }).unref();
+      spawn(
+        'powershell',
+        ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', script],
+        {
+          detached: true,
+          stdio: 'ignore',
+          windowsHide: true,
+        }
+      ).unref();
 
       // Exit the app
       setTimeout(() => {
@@ -490,53 +441,9 @@ async function installUpdate(updatePath) {
 
       return { success: true };
     } else if (process.platform === 'darwin') {
-      // macOS: Use bash script
-      // currentExe is inside: AppName.app/Contents/MacOS/AppName
-      const appBundle = path.resolve(currentExe, '..', '..', '..');
-      const appBundleName = path.basename(appBundle);
-      const appBundleDir = path.dirname(appBundle);
-
-      const script = `
-        pid=${pid}
-        zipPath='${resolvedUpdatePath.replace(/'/g, "'\\''")}'
-        appBundleDir='${appBundleDir.replace(/'/g, "'\\''")}'
-        appBundleName='${appBundleName.replace(/'/g, "'\\''")}'
-        appBundlePath='${appBundle.replace(/'/g, "'\\''")}'
-
-        # Wait for app to exit
-        while kill -0 $pid 2>/dev/null; do sleep 0.2; done
-
-        # Small delay to ensure file handles are released
-        sleep 1
-
-        # Create temp directory for extraction
-        tempDir=$(mktemp -d)
-
-        # Extract zip to temp directory
-        ditto -xk "$zipPath" "$tempDir"
-
-        # Find the .app bundle in extracted contents (handles nested folder structures)
-        extractedApp=$(find "$tempDir" -name "*.app" -type d -maxdepth 2 | head -1)
-
-        if [ -n "$extractedApp" ]; then
-          # Remove old app bundle
-          rm -rf "$appBundlePath"
-
-          # Move new app bundle to target location
-          mv "$extractedApp" "$appBundlePath"
-
-          # Launch new version
-          open "$appBundlePath"
-        fi
-
-        # Cleanup
-        rm -rf "$tempDir"
-        rm -f "$zipPath"
-      `;
-
-      spawn('bash', ['-c', script], {
+      spawn('open', [resolvedUpdatePath], {
         detached: true,
-        stdio: 'ignore'
+        stdio: 'ignore',
       }).unref();
 
       setTimeout(() => {
@@ -582,5 +489,5 @@ module.exports = {
   cleanupUpdates,
   compareVersions,
   normalizeVersion,
-  parseChecksumText
+  parseAssetDigest,
 };

@@ -1,6 +1,6 @@
 {
   "name": "keepdir",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "keepdir Desktop Application",
   "main": "src/main/main.js",
   "scripts": {
@@ -13,8 +13,8 @@
     "build": "webpack --config webpack.config.js",
     "typecheck": "tsc --noEmit --pretty false",
     "lint": "eslint . --cache --cache-location node_modules/.cache/eslint/",
-    "format": "prettier --write package.json package-lock.json tsconfig.json jest.config.js webpack.config.js eslint.config.mjs playwright.config.ts README.md ARCHITECTURE.md",
-    "format:check": "prettier --check package.json package-lock.json tsconfig.json jest.config.js webpack.config.js eslint.config.mjs playwright.config.ts README.md ARCHITECTURE.md",
+    "format": "prettier --write package.json package-lock.json tsconfig.json jest.config.js webpack.config.js eslint.config.mjs playwright.config.ts README.md",
+    "format:check": "prettier --check package.json package-lock.json tsconfig.json jest.config.js webpack.config.js eslint.config.mjs playwright.config.ts README.md",
     "check": "npm run typecheck && npm run lint && npm run test:ci && npm run build",
     "test": "jest",
     "test:watch": "jest --watch",
@@ -26,11 +26,8 @@
   "license": "MIT",
   "devDependencies": {
     "@electron-forge/cli": "^7.6.0",
-    "@electron-forge/maker-deb": "^7.6.0",
     "@electron-forge/maker-dmg": "^7.6.0",
-    "@electron-forge/maker-rpm": "^7.6.0",
     "@electron-forge/maker-squirrel": "^7.6.0",
-    "@electron-forge/maker-zip": "^7.6.0",
     "@electron-forge/plugin-auto-unpack-natives": "^7.6.0",
     "@electron-forge/plugin-fuses": "^7.6.0",
     "@electron/fuses": "^1.8.0",

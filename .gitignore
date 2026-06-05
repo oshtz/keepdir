@@ -21,12 +21,6 @@ DEV_CHECKLIST.md
 
 # Documentation
 docs/*
-!docs/superpowers/
-docs/superpowers/*
-!docs/superpowers/specs/
-!docs/superpowers/specs/*.md
-!docs/superpowers/plans/
-!docs/superpowers/plans/*.md
 Cline_readme.txt
 
 # IDE - VSCode
