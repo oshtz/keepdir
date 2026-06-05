@@ -288,4 +288,26 @@ describe('database local-first contract', () => {
       "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'processed_files'"
     )).resolves.toBeNull();
   });
+
+  it('cancels initial maintenance cleanup when the scheduler is stopped', async () => {
+    await db.close();
+    db = null;
+
+    jest.useFakeTimers();
+    const cleanupSpy = jest.spyOn(Database.prototype, 'cleanupCache').mockResolvedValue();
+
+    try {
+      db = new Database();
+      await db._get('SELECT 1 as ready');
+      db.stopMaintenanceScheduler();
+
+      jest.advanceTimersByTime(30_000);
+      await Promise.resolve();
+
+      expect(cleanupSpy).not.toHaveBeenCalled();
+    } finally {
+      cleanupSpy.mockRestore();
+      jest.useRealTimers();
+    }
+  });
 });

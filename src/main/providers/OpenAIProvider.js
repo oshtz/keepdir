@@ -1,6 +1,8 @@
 const { Provider } = require('./Provider');
 const axios = require('axios');
 
+const VALIDATION_TIMEOUT_MS = 15000;
+
 class OpenAIProvider extends Provider {
   constructor() {
     super();
@@ -41,7 +43,7 @@ class OpenAIProvider extends Provider {
           }],
           max_tokens: 1
         },
-        { headers }
+        { headers, timeout: VALIDATION_TIMEOUT_MS }
       );
       return true;
     } catch (error) {

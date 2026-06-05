@@ -1,6 +1,8 @@
 const { Provider } = require('./Provider');
 const axios = require('axios');
 
+const VALIDATION_TIMEOUT_MS = 15000;
+
 class GeminiProvider extends Provider {
   constructor() {
     super();
@@ -73,7 +75,7 @@ class GeminiProvider extends Provider {
             }
           ],
         },
-        { headers }
+        { headers, timeout: VALIDATION_TIMEOUT_MS }
       );
       return response.status === 200;
     } catch (error) {

@@ -2,6 +2,8 @@ import { Provider, ProviderConfig, Message, ImageValidationResult } from './Prov
 import { Anthropic } from '@anthropic-ai/sdk';
 import axios from 'axios';
 
+const VALIDATION_TIMEOUT_MS = 15000;
+
 export class AnthropicProvider extends Provider {
   public static readonly MAX_IMAGE_DIMENSION = 1568;
   public static readonly OPTIMAL_MAX_MEGAPIXELS = 1.15;
@@ -29,7 +31,9 @@ export class AnthropicProvider extends Provider {
   async validateConfig(config: ProviderConfig): Promise<boolean> {
     try {
       const client = new Anthropic({
-        apiKey: config.apiKey
+        apiKey: config.apiKey,
+        timeout: VALIDATION_TIMEOUT_MS,
+        maxRetries: 0
       });
 
       await client.messages.create({

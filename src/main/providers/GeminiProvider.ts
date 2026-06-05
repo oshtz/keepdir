@@ -1,6 +1,8 @@
 import { Provider, ProviderConfig, Message, ImageValidationResult } from './Provider';
 import axios from 'axios';
 
+const VALIDATION_TIMEOUT_MS = 15000;
+
 export class GeminiProvider extends Provider {
   constructor() {
     super();
@@ -65,7 +67,7 @@ export class GeminiProvider extends Provider {
             }
           ],
         },
-        { headers }
+        { headers, timeout: VALIDATION_TIMEOUT_MS }
       );
       return response.status === 200;
     } catch (error) {

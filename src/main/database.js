@@ -84,6 +84,7 @@ class Database {
 
     this.db = new sqlite3.Database(dbPath);
     this.maintenanceInterval = null;
+    this.initialMaintenanceTimeout = null;
     this.transactionQueue = Promise.resolve();
 
     // Enable WAL mode for better performance and concurrent access
@@ -331,11 +332,13 @@ class Database {
     }, 6 * 60 * 60 * 1000); // 6 hours
 
     // Run initial cleanup after 30 seconds
-    setTimeout(async () => {
+    this.initialMaintenanceTimeout = setTimeout(async () => {
       try {
         await this.cleanupCache(168);
       } catch (error) {
         console.error('Initial database cleanup failed:', error);
+      } finally {
+        this.initialMaintenanceTimeout = null;
       }
     }, 30000);
   }
@@ -347,6 +350,10 @@ class Database {
     if (this.maintenanceInterval) {
       clearInterval(this.maintenanceInterval);
       this.maintenanceInterval = null;
+    }
+    if (this.initialMaintenanceTimeout) {
+      clearTimeout(this.initialMaintenanceTimeout);
+      this.initialMaintenanceTimeout = null;
     }
   }
 

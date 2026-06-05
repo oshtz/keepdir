@@ -2,6 +2,8 @@ const { Provider } = require('./Provider');
 const { Anthropic } = require('@anthropic-ai/sdk');
 const axios = require('axios');
 
+const VALIDATION_TIMEOUT_MS = 15000;
+
 class AnthropicProvider extends Provider {
   constructor() {
     super();
@@ -37,7 +39,9 @@ class AnthropicProvider extends Provider {
   async validateConfig(config) {
     try {
       const client = new Anthropic({
-        apiKey: config.apiKey
+        apiKey: config.apiKey,
+        timeout: VALIDATION_TIMEOUT_MS,
+        maxRetries: 0
       });
 
       await client.messages.create({

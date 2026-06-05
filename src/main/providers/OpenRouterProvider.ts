@@ -1,6 +1,8 @@
 import { Provider, ProviderConfig, Message, ImageValidationResult } from './Provider';
 import axios from 'axios';
 
+const VALIDATION_TIMEOUT_MS = 15000;
+
 export class OpenRouterProvider extends Provider {
   constructor() {
     super();
@@ -51,7 +53,7 @@ export class OpenRouterProvider extends Provider {
           }],
           max_tokens: 1
         },
-        { headers }
+        { headers, timeout: VALIDATION_TIMEOUT_MS }
       );
       return true;
     } catch (error) {
