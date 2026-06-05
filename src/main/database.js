@@ -3,6 +3,16 @@ const path = require('path');
 const crypto = require('crypto');
 const fs = require('fs');
 
+const {
+  WATCH_FOLDER_SETTING_KEY,
+  normalizeWatchFolderId,
+  normalizeWatchFolder,
+  normalizeWatchFoldersSetting,
+  normalizeWatchedRenameStatus,
+  normalizeWatchedRenameSuggestion,
+  normalizeWatchedSuggestionIds
+} = require('./watchFolderValidation');
+
 const debugLog = (...args) => {
   if (process.env.KEEPDIR_DEBUG === '1') {
     console.debug(...args);
@@ -41,6 +51,13 @@ function parseSettingsRows(rows = []) {
   return settings;
 }
 
+function getSafeSettingEntries(settings = {}) {
+  if (!settings || typeof settings !== 'object') {
+    return [];
+  }
+  return Object.entries(settings).filter(([key]) => isSafeSettingKey(key));
+}
+
 function parseJsonArrayValue(value) {
   const parsed = parseJsonValue(value, []);
   return Array.isArray(parsed) ? parsed : [];
@@ -67,6 +84,7 @@ class Database {
 
     this.db = new sqlite3.Database(dbPath);
     this.maintenanceInterval = null;
+    this.initialMaintenanceTimeout = null;
     this.transactionQueue = Promise.resolve();
 
     // Enable WAL mode for better performance and concurrent access
@@ -154,6 +172,28 @@ class Database {
         )
       `);
 
+      this.db.run(`
+        CREATE TABLE IF NOT EXISTS watched_rename_suggestions (
+          id TEXT PRIMARY KEY NOT NULL,
+          workspace_id TEXT NOT NULL,
+          folder_path TEXT NOT NULL,
+          file_path TEXT NOT NULL,
+          original_name TEXT NOT NULL,
+          suggested_name TEXT,
+          reason TEXT,
+          status TEXT CHECK(status IN ('detected', 'stabilizing', 'queued', 'analyzing', 'suggested', 'error', 'dismissed', 'applied', 'stale')) NOT NULL,
+          file_size INTEGER NOT NULL DEFAULT 0,
+          file_mtime_ms INTEGER NOT NULL DEFAULT 0,
+          error_message TEXT,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
+        )
+      `);
+      this.db.run('CREATE UNIQUE INDEX IF NOT EXISTS idx_watched_rename_active_file ON watched_rename_suggestions(workspace_id, file_path) WHERE status NOT IN (\'dismissed\', \'applied\')');
+      this.db.run('CREATE INDEX IF NOT EXISTS idx_watched_rename_workspace_status ON watched_rename_suggestions(workspace_id, status)');
+      this.db.run('CREATE INDEX IF NOT EXISTS idx_watched_rename_updated ON watched_rename_suggestions(updated_at)');
+
       // Create custom sections table
       this.db.run(`
         CREATE TABLE IF NOT EXISTS custom_sections (
@@ -179,15 +219,22 @@ class Database {
 
       // Migrate data from old table if it exists
       this.db.get("SELECT name FROM sqlite_master WHERE type='table' AND name='processed_files'", (err, row) => {
+        if (err) {
+          console.error('Failed to check legacy processed_files table:', err);
+          return;
+        }
+
         if (row) {
           // Old table exists, migrate data
-          this.db.run(`
+          this.db.exec(`
             INSERT OR IGNORE INTO processed_renames 
-            SELECT * FROM processed_files
-          `);
-
-          // Drop old table after migration
-          this.db.run(`DROP TABLE processed_files`);
+            SELECT * FROM processed_files;
+            DROP TABLE processed_files;
+          `, (migrationErr) => {
+            if (migrationErr) {
+              console.error('Failed to migrate legacy processed_files table:', migrationErr);
+            }
+          });
         }
       });
 
@@ -285,11 +332,13 @@ class Database {
     }, 6 * 60 * 60 * 1000); // 6 hours
 
     // Run initial cleanup after 30 seconds
-    setTimeout(async () => {
+    this.initialMaintenanceTimeout = setTimeout(async () => {
       try {
         await this.cleanupCache(168);
       } catch (error) {
         console.error('Initial database cleanup failed:', error);
+      } finally {
+        this.initialMaintenanceTimeout = null;
       }
     }, 30000);
   }
@@ -301,6 +350,10 @@ class Database {
     if (this.maintenanceInterval) {
       clearInterval(this.maintenanceInterval);
       this.maintenanceInterval = null;
+    }
+    if (this.initialMaintenanceTimeout) {
+      clearTimeout(this.initialMaintenanceTimeout);
+      this.initialMaintenanceTimeout = null;
     }
   }
 
@@ -1156,14 +1209,11 @@ class Database {
    * Delete a workspace and its settings
    */
   async deleteWorkspace(id) {
-    return new Promise((resolve, reject) => {
-      this.db.run('DELETE FROM workspaces WHERE id = ?', [id], (err) => {
-        if (err) {
-          reject(err);
-          return;
-        }
-        resolve();
-      });
+    return this._withTransaction(async () => {
+      await this._run('DELETE FROM workspace_settings WHERE workspace_id = ?', [id]);
+      await this._run('DELETE FROM custom_sections WHERE workspace_id = ?', [id]);
+      await this._run('DELETE FROM watched_rename_suggestions WHERE workspace_id = ?', [id]);
+      await this._run('DELETE FROM workspaces WHERE id = ?', [id]);
     });
   }
 
@@ -1227,6 +1277,7 @@ class Database {
       throw new Error('Invalid workspace backup data.');
     }
 
+    const workspaceSettingEntries = getSafeSettingEntries(workspaceData.settings || {});
     let workspaceId = workspaceData.workspace.id;
     if (generateNewId) {
       workspaceId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
@@ -1255,7 +1306,7 @@ class Database {
         await this._run('DELETE FROM custom_sections WHERE workspace_id = ?', [workspaceId]);
       }
 
-      for (const [key, value] of Object.entries(workspaceData.settings || {})) {
+      for (const [key, value] of workspaceSettingEntries) {
         await this._run(
           `INSERT INTO workspace_settings (workspace_id, key, value, updated_at)
            VALUES (?, ?, ?, CURRENT_TIMESTAMP)
@@ -1294,7 +1345,7 @@ class Database {
         workspaceId,
         imported: {
           workspace: workspaceData.workspace.name,
-          settings: Object.keys(workspaceData.settings || {}).length,
+          settings: workspaceSettingEntries.length,
           customSections: (workspaceData.customSections || []).length
         }
       };
@@ -1333,13 +1384,18 @@ class Database {
               return;
             }
 
-            // Group settings by workspace
-            const settingsByWorkspace = {};
+            // Group settings by workspace through the same safe-key parser used elsewhere.
+            const settingsRowsByWorkspace = {};
             workspaceSettings.forEach(setting => {
-              if (!settingsByWorkspace[setting.workspace_id]) {
-                settingsByWorkspace[setting.workspace_id] = {};
+              if (!settingsRowsByWorkspace[setting.workspace_id]) {
+                settingsRowsByWorkspace[setting.workspace_id] = [];
               }
-              settingsByWorkspace[setting.workspace_id][setting.key] = parseJsonValue(setting.value);
+              settingsRowsByWorkspace[setting.workspace_id].push(setting);
+            });
+
+            const settingsByWorkspace = {};
+            Object.entries(settingsRowsByWorkspace).forEach(([workspaceId, rows]) => {
+              settingsByWorkspace[workspaceId] = parseSettingsRows(rows);
             });
 
             const sectionsByWorkspace = {};
@@ -1379,6 +1435,7 @@ class Database {
    */
   async importAllData(backupData, options = {}) {
     const { overwriteExisting = false } = options;
+    const globalSettingEntries = getSafeSettingEntries(backupData.settings || {});
 
     const results = {
       success: true,
@@ -1391,12 +1448,12 @@ class Database {
     };
 
     return this._withTransaction(async () => {
-      if (backupData.settings && Object.keys(backupData.settings).length > 0) {
+      if (globalSettingEntries.length > 0) {
         if (overwriteExisting) {
           await this._run('DELETE FROM settings');
         }
 
-        for (const [key, value] of Object.entries(backupData.settings)) {
+        for (const [key, value] of globalSettingEntries) {
           const insertResult = await this._run(
             `INSERT OR ${overwriteExisting ? 'REPLACE' : 'IGNORE'} INTO settings (key, value, updated_at)
              VALUES (?, ?, CURRENT_TIMESTAMP)`,
@@ -1434,7 +1491,7 @@ class Database {
             );
           }
 
-          for (const [key, value] of Object.entries(workspaceData.settings || {})) {
+          for (const [key, value] of getSafeSettingEntries(workspaceData.settings || {})) {
             await this._run(
               `INSERT OR ${overwriteExisting ? 'REPLACE' : 'IGNORE'} INTO workspace_settings (workspace_id, key, value, updated_at)
                VALUES (?, ?, ?, CURRENT_TIMESTAMP)`,
@@ -1674,14 +1731,125 @@ class Database {
     });
   }
 
+  async getWatchFolders(workspaceId) {
+    const value = await this.getWorkspaceSetting(workspaceId, WATCH_FOLDER_SETTING_KEY);
+    return normalizeWatchFoldersSetting(value || []);
+  }
+
+  async saveWatchFolder(workspaceId, folder) {
+    const normalized = normalizeWatchFolder(folder);
+    return this._withTransaction(async () => {
+      const folders = await this.getWatchFolders(workspaceId);
+      const nextFolders = folders.some((item) => item.id === normalized.id)
+        ? folders.map((item) => item.id === normalized.id ? normalized : item)
+        : [...folders, normalized];
+      await this.saveWorkspaceSetting(workspaceId, WATCH_FOLDER_SETTING_KEY, nextFolders);
+      return { success: true, folder: normalized };
+    });
+  }
+
+  async removeWatchFolder(workspaceId, folderId) {
+    const id = normalizeWatchFolderId(folderId);
+    return this._withTransaction(async () => {
+      const folders = await this.getWatchFolders(workspaceId);
+      await this.saveWorkspaceSetting(
+        workspaceId,
+        WATCH_FOLDER_SETTING_KEY,
+        folders.filter((folder) => folder.id !== id)
+      );
+      return { success: true };
+    });
+  }
+
+  async setWatchFolderEnabled(workspaceId, folderId, enabled) {
+    const id = normalizeWatchFolderId(folderId);
+    return this._withTransaction(async () => {
+      const folders = await this.getWatchFolders(workspaceId);
+      const nextFolders = folders.map((folder) => (
+        folder.id === id ? { ...folder, enabled: enabled === true } : folder
+      ));
+      await this.saveWorkspaceSetting(workspaceId, WATCH_FOLDER_SETTING_KEY, nextFolders);
+      return { success: true };
+    });
+  }
+
+  async upsertWatchedRenameSuggestion(suggestion) {
+    const normalized = normalizeWatchedRenameSuggestion(suggestion);
+    await this._run(
+      `INSERT INTO watched_rename_suggestions (
+         id, workspace_id, folder_path, file_path, original_name,
+         suggested_name, reason, status, file_size, file_mtime_ms, error_message
+       )
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(workspace_id, file_path) WHERE status NOT IN ('dismissed', 'applied')
+       DO UPDATE SET
+         suggested_name = excluded.suggested_name,
+         reason = excluded.reason,
+         status = excluded.status,
+         file_size = excluded.file_size,
+         file_mtime_ms = excluded.file_mtime_ms,
+         error_message = excluded.error_message,
+         updated_at = CURRENT_TIMESTAMP`,
+      [
+        normalized.id,
+        normalized.workspaceId,
+        this._normalizePath(normalized.folderPath),
+        this._normalizePath(normalized.filePath),
+        normalized.originalName,
+        normalized.suggestedName,
+        normalized.reason,
+        normalized.status,
+        normalized.fileSize,
+        normalized.fileMtimeMs,
+        normalized.errorMessage
+      ]
+    );
+  }
+
+  async getWatchedRenameSuggestions(workspaceId, statuses = ['queued', 'analyzing', 'suggested', 'error', 'stale']) {
+    const normalizedStatuses = statuses.map(normalizeWatchedRenameStatus);
+    const placeholders = normalizedStatuses.map(() => '?').join(', ');
+    return this._all(
+      `SELECT * FROM watched_rename_suggestions
+       WHERE workspace_id = ? AND status IN (${placeholders})
+       ORDER BY updated_at DESC, created_at DESC`,
+      [workspaceId, ...normalizedStatuses]
+    );
+  }
+
+  async getWatchedRenameSuggestionsByIds(workspaceId, suggestionIds) {
+    const ids = normalizeWatchedSuggestionIds(suggestionIds);
+    const placeholders = ids.map(() => '?').join(', ');
+    return this._all(
+      `SELECT * FROM watched_rename_suggestions
+       WHERE workspace_id = ? AND id IN (${placeholders})
+       ORDER BY updated_at DESC, created_at DESC`,
+      [workspaceId, ...ids]
+    );
+  }
+
+  async updateWatchedRenameSuggestionStatus(workspaceId, suggestionId, status, errorMessage = null) {
+    const id = normalizeWatchedSuggestionIds([suggestionId])[0];
+    const normalizedStatus = normalizeWatchedRenameStatus(status);
+    await this._run(
+      `UPDATE watched_rename_suggestions
+       SET status = ?, error_message = ?, updated_at = CURRENT_TIMESTAMP
+       WHERE workspace_id = ? AND id = ?`,
+      [normalizedStatus, errorMessage, workspaceId, id]
+    );
+  }
+
   close() {
     debugLog('Closing database connection');
-    this.db.close((err) => {
-      if (err) {
-        console.error('Error closing database:', err);
-      } else {
-        debugLog('Database connection closed successfully');
-      }
+    return new Promise((resolve) => {
+      this.db.close((err) => {
+        if (err) {
+          console.error('Error closing database:', err);
+        } else {
+          debugLog('Database connection closed successfully');
+        }
+        resolve();
+      });
     });
   }
 }

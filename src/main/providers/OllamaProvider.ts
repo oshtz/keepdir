@@ -9,7 +9,6 @@ export class OllamaProvider extends Provider {
     this.supportedModels = []; // Will be populated dynamically from Ollama
     this.supportsVision = true; // Ollama supports vision models like llava, bakllava, etc.
     this.maxImagesPerRequest = 10;
-    this.requiresAuth = false; // Ollama doesn't require authentication
   }
 
   /**
@@ -21,7 +20,7 @@ export class OllamaProvider extends Provider {
       // Just check if Ollama is running by trying to connect
       await axios.get('http://localhost:11434/api/tags', { timeout: 5000 });
       return { valid: true };
-    } catch (error) {
+    } catch {
       return {
         valid: false,
         error: 'Ollama is not running. Please start Ollama first.'

@@ -1,6 +1,8 @@
 const { Provider } = require('./Provider');
 const axios = require('axios');
 
+const VALIDATION_TIMEOUT_MS = 15000;
+
 class GeminiProvider extends Provider {
   constructor() {
     super();
@@ -13,7 +15,6 @@ class GeminiProvider extends Provider {
     ];
     this.supportsVision = true;
     this.maxImagesPerRequest = 3600; // Gemini supports up to 3,600 image files
-    this.requiresAuth = false; // Gemini doesn't require user auth, just API key
   }
 
   /**
@@ -38,7 +39,7 @@ class GeminiProvider extends Provider {
   }
 
   /**
-   * Prepares headers with authentication for Gemini
+   * Prepares Gemini API headers.
    * @param {import('./Provider').ProviderConfig} config
    * @returns {Object}
    */
@@ -50,12 +51,6 @@ class GeminiProvider extends Provider {
     // Gemini uses x-goog-api-key instead of Authorization header
     if (config.apiKey) {
       headers['x-goog-api-key'] = config.apiKey;
-    }
-
-    // Add user authentication if required and provided
-    if (this.requiresAuth && config.userAuth) {
-      headers['X-User-Token'] = config.userAuth.token;
-      headers['X-User-Email'] = config.userAuth.email;
     }
 
     return headers;
@@ -80,7 +75,7 @@ class GeminiProvider extends Provider {
             }
           ],
         },
-        { headers }
+        { headers, timeout: VALIDATION_TIMEOUT_MS }
       );
       return response.status === 200;
     } catch (error) {

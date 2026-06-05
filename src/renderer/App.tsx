@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { ThemeProvider, createTheme } from "@mui/material/styles";
 import CssBaseline from "@mui/material/CssBaseline";
 import Box from "@mui/material/Box";
@@ -323,7 +323,7 @@ const AppContent: React.FC = () => {
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, []);
 
-  const fetchOllamaModels = async () => {
+  const fetchOllamaModels = useCallback(async () => {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 1000);
 
@@ -341,21 +341,21 @@ const AppContent: React.FC = () => {
       setOllamaModels(modelList);
       setIsOllamaAvailable(true);
       return modelList;
-    } catch (error) {
+    } catch {
       clearTimeout(timeoutId);
       setIsOllamaAvailable(false);
       return [];
     }
-  };
+  }, []);
 
-  const mapModelNames = (
+  const mapModelNames = useCallback((
     modelNames: string[],
     status: "ready" = "ready",
   ) => {
     return modelNames.map((name) => ({ name, status }));
-  };
+  }, []);
 
-  const resolveDefaultModel = (
+  const resolveDefaultModel = useCallback((
     modelNames: string[],
     preferred?: string,
   ): string => {
@@ -363,9 +363,9 @@ const AppContent: React.FC = () => {
       return preferred;
     }
     return modelNames[0] || "";
-  };
+  }, []);
 
-  const fetchProviderModels = async (provider: string) => {
+  const fetchProviderModels = useCallback(async (provider: string) => {
     if (provider === "ollama") {
       const ollamaModelList = await fetchOllamaModels();
       const modelNames = ollamaModelList.map((model: { name: string }) => model.name);
@@ -385,7 +385,7 @@ const AppContent: React.FC = () => {
       models: mapModelNames(modelNames),
       defaultModel: resolveDefaultModel(modelNames, result.defaultModel),
     };
-  };
+  }, [fetchOllamaModels, mapModelNames, resolveDefaultModel]);
 
   useEffect(() => {
     let retryCount = 0;
@@ -401,7 +401,7 @@ const AppContent: React.FC = () => {
     };
 
     checkOllama();
-  }, []);
+  }, [fetchOllamaModels]);
 
   // Initialize models for selected provider on mount
   useEffect(() => {
@@ -439,7 +439,7 @@ const AppContent: React.FC = () => {
     if (selectedProvider) {
       initializeModels();
     }
-  }, [selectedProvider]);
+  }, [fetchProviderModels, selectedModel, selectedProvider]);
 
   const handleProviderChange = async (event: SelectChangeEvent) => {
     const newProvider = event.target.value;

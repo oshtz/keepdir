@@ -20,7 +20,13 @@ DEV_CHECKLIST.md
 *.sqlite3
 
 # Documentation
-docs/
+docs/*
+!docs/superpowers/
+docs/superpowers/*
+!docs/superpowers/specs/
+!docs/superpowers/specs/*.md
+!docs/superpowers/plans/
+!docs/superpowers/plans/*.md
 Cline_readme.txt
 
 # IDE - VSCode
@@ -72,6 +78,8 @@ forge.env
 # Testing
 coverage/
 .nyc_output/
+test-results/
+playwright-report/
 
 # Temporary files
 *.swp

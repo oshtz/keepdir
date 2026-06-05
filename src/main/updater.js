@@ -183,10 +183,10 @@ function compareVersions(left, right) {
 
 /**
  * Check for available updates
- * @param {BrowserWindow} mainWindow - Main window for sending progress events
+ * @param {BrowserWindow} _mainWindow - Main window for sending progress events
  * @returns {Promise<{updateInfo?: object, error?: string}>}
  */
-async function checkForUpdate(mainWindow) {
+async function checkForUpdate(_mainWindow) {
   // Don't check for updates in development
   if (!app.isPackaged) {
     return { error: 'Updates are disabled in development mode.' };
@@ -354,7 +354,7 @@ async function downloadUpdate(updateInfo, mainWindow) {
       const rejectAndCleanup = (err) => {
         try {
           fs.unlinkSync(updatePath);
-        } catch (e) {
+        } catch {
           // Ignore cleanup errors
         }
         reject(err);
@@ -565,7 +565,7 @@ function cleanupUpdates() {
         const filePath = path.join(updateDir, file);
         try {
           fs.unlinkSync(filePath);
-        } catch (e) {
+        } catch {
           // Ignore errors
         }
       }

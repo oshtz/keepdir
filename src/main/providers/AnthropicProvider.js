@@ -2,6 +2,8 @@ const { Provider } = require('./Provider');
 const { Anthropic } = require('@anthropic-ai/sdk');
 const axios = require('axios');
 
+const VALIDATION_TIMEOUT_MS = 15000;
+
 class AnthropicProvider extends Provider {
   constructor() {
     super();
@@ -14,7 +16,6 @@ class AnthropicProvider extends Provider {
     ];
     this.supportsVision = true;
     this.maxImagesPerRequest = 100;
-    this.requiresAuth = false; // Anthropic doesn't require user auth, just API key
   }
 
   /** @type {number} */
@@ -38,7 +39,9 @@ class AnthropicProvider extends Provider {
   async validateConfig(config) {
     try {
       const client = new Anthropic({
-        apiKey: config.apiKey
+        apiKey: config.apiKey,
+        timeout: VALIDATION_TIMEOUT_MS,
+        maxRetries: 0
       });
 
       await client.messages.create({
@@ -130,16 +133,6 @@ class AnthropicProvider extends Provider {
         messages: nonSystemMessages,
         ...(systemMessage && { system: systemMessage.content[0].text })
       };
-
-      // Add user authentication headers if required
-      if (this.requiresAuth && config.userAuth) {
-        // Note: Anthropic SDK doesn't directly support custom headers in this way
-        // This is a placeholder for future implementation if needed
-        requestOptions.headers = {
-          'X-User-Token': config.userAuth.token,
-          'X-User-Email': config.userAuth.email
-        };
-      }
 
       const response = await client.messages.create(requestOptions);
 

@@ -281,7 +281,7 @@ async function readJsonImportFile(filePath, { maxBytes = DEFAULT_MAX_IMPORT_BYTE
 
   try {
     return JSON.parse(fileContent);
-  } catch (error) {
+  } catch {
     throw new Error('Import file is not valid JSON.');
   }
 }

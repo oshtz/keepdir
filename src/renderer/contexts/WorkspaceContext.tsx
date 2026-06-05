@@ -1,28 +1,40 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import type {
+  AllDataImportSummary,
+  CustomSection,
+  CustomSectionData,
+  CustomSectionItem,
+  CustomSectionItemInput,
+  CustomSectionUpdates,
+  ExportResult,
+  FolderItem,
+  ImportOptions,
+  ImportResult,
+  ViewMode,
+  Workspace,
+  WorkspaceImportSummary,
+  WorkspaceTheme,
+} from '../electron';
 
-export interface Workspace {
-  id: string;
-  name: string;
-  emoji: string;
-}
+export type { Workspace } from '../electron';
 
-interface FolderItem {
-  name: string;
-  path: string;
-}
-
-interface WorkspaceTheme {
-  name: string;
-  accentColor: string;
-  darkMode: boolean;
-  backgroundGradient?: string;
-  customColors?: {
-    primary?: string;
-    secondary?: string;
-    background?: string;
-    surface?: string;
-  };
-}
+const DEFAULT_WORKSPACE_EMOJIS = [
+  '\u{1F31F}',
+  '\u{1F3AF}',
+  '\u{1F3A8}',
+  '\u{1F4DA}',
+  '\u{1F4A1}',
+  '\u{1F527}',
+  '\u{1F3AE}',
+  '\u{1F3B5}',
+  '\u{1F4DD}',
+  '\u{1F5C2}\uFE0F',
+  '\u{1F4CA}',
+  '\u{1F308}',
+  '\u{1F680}',
+  '\u{1F4BB}',
+  '\u{1F4F1}',
+];
 
 interface WorkspaceContextType {
   workspaces: Workspace[];
@@ -31,10 +43,10 @@ interface WorkspaceContextType {
   recentFolders: string[];
   favoriteFolders: FolderItem[];
   sectionOrder: string[];
-  customSections: any[];
+  customSections: CustomSection[];
   workspaceTheme: WorkspaceTheme | null;
-  viewMode: 'grid' | 'list' | 'table' | 'tiles' | 'compact' | 'details';
-  setViewMode: (mode: 'grid' | 'list' | 'table' | 'tiles' | 'compact' | 'details') => void;
+  viewMode: ViewMode;
+  setViewMode: (mode: ViewMode) => void;
   clearRecentFolders: () => void;
   sectionVisibility: Record<string, boolean>;
   setSectionVisibility: (section: string, visible: boolean) => void;
@@ -52,16 +64,34 @@ interface WorkspaceContextType {
   setCurrentDirectoryPath: (path: string) => void;
   setWorkspaceTheme: (theme: WorkspaceTheme | null) => void;
   getWorkspaceTheme: (workspaceId: string) => Promise<WorkspaceTheme | null>;
-  exportWorkspace: (workspaceId: string) => Promise<any>;
-  importWorkspace: (options?: any) => Promise<any>;
-  exportAllData: () => Promise<any>;
-  importAllData: (options?: any) => Promise<any>;
-  getCustomSections: (workspaceId: string) => Promise<any>;
-  createCustomSection: (workspaceId: string, sectionData: any) => Promise<any>;
-  updateCustomSection: (sectionId: string, updates: any) => Promise<any>;
-  deleteCustomSection: (sectionId: string) => Promise<any>;
-  addItemToCustomSection: (sectionId: string, item: any) => Promise<any>;
-  removeItemFromCustomSection: (sectionId: string, itemId: string) => Promise<any>;
+  exportWorkspace: (workspaceId: string) => Promise<ExportResult>;
+  importWorkspace: (
+    options?: ImportOptions,
+  ) => Promise<ImportResult<WorkspaceImportSummary> & { workspaceId?: string }>;
+  exportAllData: () => Promise<ExportResult>;
+  importAllData: (
+    options?: ImportOptions,
+  ) => Promise<ImportResult<AllDataImportSummary> & { errors?: string[] }>;
+  getCustomSections: (
+    workspaceId: string,
+  ) => Promise<{ success?: boolean; sections?: CustomSection[]; error?: string }>;
+  createCustomSection: (
+    workspaceId: string,
+    sectionData: CustomSectionData,
+  ) => Promise<{ success?: boolean; section?: CustomSection; error?: string }>;
+  updateCustomSection: (
+    sectionId: string,
+    updates: CustomSectionUpdates,
+  ) => Promise<{ success?: boolean; error?: string }>;
+  deleteCustomSection: (sectionId: string) => Promise<{ success?: boolean; error?: string }>;
+  addItemToCustomSection: (
+    sectionId: string,
+    item: CustomSectionItemInput,
+  ) => Promise<{ success?: boolean; items?: CustomSectionItem[]; error?: string }>;
+  removeItemFromCustomSection: (
+    sectionId: string,
+    itemId: string,
+  ) => Promise<{ success?: boolean; items?: CustomSectionItem[]; error?: string }>;
 }
 
 const WorkspaceContext = createContext<WorkspaceContextType | undefined>(undefined);
@@ -73,9 +103,9 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const [recentFolders, setRecentFolders] = useState<string[]>([]);
   const [favoriteFolders, setFavoriteFolders] = useState<FolderItem[]>([]);
   const [sectionOrder, setSectionOrder] = useState<string[]>(['workspaces', 'recent', 'favorites']);
-  const [customSections, setCustomSections] = useState<any[]>([]);
+  const [customSections, setCustomSections] = useState<CustomSection[]>([]);
   const [workspaceTheme, setWorkspaceThemeState] = useState<WorkspaceTheme | null>(null);
-  const [viewMode, setViewModeState] = useState<'grid' | 'list' | 'table' | 'tiles' | 'compact' | 'details'>('grid');
+  const [viewMode, setViewModeState] = useState<ViewMode>('grid');
 
   const [sectionVisibility, setSectionVisibilityState] = useState<Record<string, boolean>>({
     workspaces: true,
@@ -93,7 +123,21 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       } else {
         // Create default workspace if none exist
         const id = Date.now().toString();
-        addWorkspace({ id, name: 'Default Workspace', emoji: '' });
+        const defaultWorkspace = {
+          id,
+          name: 'Default Workspace',
+          emoji:
+            DEFAULT_WORKSPACE_EMOJIS[
+              Math.floor(Math.random() * DEFAULT_WORKSPACE_EMOJIS.length)
+            ],
+        };
+        setWorkspaces(prev => {
+          if (prev.length > 0) {
+            return prev;
+          }
+          setCurrentWorkspaceState(defaultWorkspace);
+          return [defaultWorkspace];
+        });
       }
     };
     loadWorkspaces();
@@ -136,7 +180,7 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           }
           // Load view mode
           if (settings && 'viewMode' in settings && settings.viewMode) {
-            setViewModeState(settings.viewMode as 'grid' | 'list' | 'table' | 'tiles' | 'compact' | 'details');
+            setViewModeState(settings.viewMode);
           } else {
             setViewModeState('grid');
           }
@@ -147,7 +191,7 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         if (customSectionsResult.success && customSectionsResult.sections) {
           setCustomSections(customSectionsResult.sections);
           // Add custom section IDs to section order if not already present
-          const customSectionIds = customSectionsResult.sections.map((s: any) => s.id);
+          const customSectionIds = customSectionsResult.sections.map((s) => s.id);
           setSectionOrder(prev => {
             const newOrder = [...prev];
             customSectionIds.forEach((id: string) => {
@@ -161,6 +205,12 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       }
     };
     loadWorkspaceSettings();
+  }, [currentWorkspace]);
+
+  useEffect(() => {
+    window.electronAPI.setActiveWatchWorkspace(currentWorkspace?.id || null).catch((error) => {
+      console.error('Failed to sync active watch workspace:', error);
+    });
   }, [currentWorkspace]);
 
   // Save workspace settings when they change (debounced to prevent excessive saves)
@@ -323,7 +373,7 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
   };
 
-  const importWorkspace = async (options: any = {}) => {
+  const importWorkspace = async (options: ImportOptions = {}) => {
     try {
       const result = await window.electronAPI.importWorkspace(options);
       if (result.success) {
@@ -348,7 +398,7 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
   };
 
-  const importAllData = async (options: any = {}) => {
+  const importAllData = async (options: ImportOptions = {}) => {
     try {
       const result = await window.electronAPI.importAllData(options);
       if (result.success) {
@@ -379,13 +429,14 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
   };
 
-  const createCustomSection = async (workspaceId: string, sectionData: any) => {
+  const createCustomSection = async (workspaceId: string, sectionData: CustomSectionData) => {
     try {
       const result = await window.electronAPI.createCustomSection(workspaceId, sectionData);
       if (result.success && result.section) {
-        setCustomSections(prev => [...prev, result.section]);
+        const createdSection = result.section;
+        setCustomSections(prev => [...prev, createdSection]);
         // Add to section order
-        setSectionOrder(prev => [...prev, result.section.id]);
+        setSectionOrder(prev => [...prev, createdSection.id]);
       }
       return result;
     } catch (error) {
@@ -394,7 +445,7 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
   };
 
-  const updateCustomSection = async (sectionId: string, updates: any) => {
+  const updateCustomSection = async (sectionId: string, updates: CustomSectionUpdates) => {
     try {
       const result = await window.electronAPI.updateCustomSection(sectionId, updates);
       if (result.success) {
@@ -424,12 +475,13 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
   };
 
-  const addItemToCustomSection = async (sectionId: string, item: any) => {
+  const addItemToCustomSection = async (sectionId: string, item: CustomSectionItemInput) => {
     try {
       const result = await window.electronAPI.addItemToCustomSection(sectionId, item);
       if (result.success && result.items) {
+        const items = result.items;
         setCustomSections(prev => prev.map(section =>
-          section.id === sectionId ? { ...section, items: result.items } : section
+          section.id === sectionId ? { ...section, items } : section
         ));
       }
       return result;
@@ -443,8 +495,9 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     try {
       const result = await window.electronAPI.removeItemFromCustomSection(sectionId, itemId);
       if (result.success && result.items) {
+        const items = result.items;
         setCustomSections(prev => prev.map(section =>
-          section.id === sectionId ? { ...section, items: result.items } : section
+          section.id === sectionId ? { ...section, items } : section
         ));
       }
       return result;
@@ -464,14 +517,16 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const getWorkspaceTheme = async (workspaceId: string): Promise<WorkspaceTheme | null> => {
     try {
       const theme = await window.electronAPI.getWorkspaceSetting(workspaceId, 'workspaceTheme');
-      return theme || null;
+      return theme && typeof theme === 'object' && !Array.isArray(theme)
+        ? (theme as unknown as WorkspaceTheme)
+        : null;
     } catch (error) {
       console.error('Failed to get workspace theme:', error);
       return null;
     }
   };
   
-  const setViewMode = (mode: 'grid' | 'list' | 'table' | 'tiles' | 'compact' | 'details') => {
+  const setViewMode = (mode: ViewMode) => {
     setViewModeState(mode);
   };
   

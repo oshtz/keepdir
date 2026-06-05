@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
@@ -34,7 +34,7 @@ const ModelManagement: React.FC<ModelManagementProps> = ({ selectedProvider, sel
   const [pulling, setPulling] = useState(false);
   const [defaultModel, setDefaultModel] = useState('');
 
-  const fetchModels = async () => {
+  const fetchModels = useCallback(async () => {
     setLoading(true);
     setError(null);
     setDefaultModel('');
@@ -74,7 +74,7 @@ const ModelManagement: React.FC<ModelManagementProps> = ({ selectedProvider, sel
     } finally {
       setLoading(false);
     }
-  };
+  }, [onModelsLoaded, selectedProvider]);
 
   useEffect(() => {
     if (!selectedProvider) {
@@ -85,7 +85,7 @@ const ModelManagement: React.FC<ModelManagementProps> = ({ selectedProvider, sel
     }
 
     fetchModels();
-  }, [selectedProvider, selectedModel]); // Add selectedModel as dependency to ensure refresh after model changes
+  }, [fetchModels, onModelsLoaded, selectedModel, selectedProvider]); // Refresh after model changes.
 
   const handlePullModel = async () => {
     if (!newModelName) return;

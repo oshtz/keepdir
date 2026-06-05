@@ -38,6 +38,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getWorkspaceSettings: (workspaceId) => ipcRenderer.invoke('get-workspace-settings', workspaceId),
   getWorkspaceSetting: (workspaceId, key) => ipcRenderer.invoke('get-workspace-setting', { workspaceId, key }),
   saveWorkspaceSetting: (workspaceId, key, value) => ipcRenderer.invoke('save-workspace-setting', { workspaceId, key, value }),
+  setActiveWatchWorkspace: (workspaceId) => ipcRenderer.invoke('set-active-watch-workspace', workspaceId),
+  getWatchFolders: (workspaceId) => ipcRenderer.invoke('get-watch-folders', workspaceId),
+  saveWatchFolder: (workspaceId, folder) => ipcRenderer.invoke('save-watch-folder', workspaceId, folder),
+  removeWatchFolder: (workspaceId, folderId) => ipcRenderer.invoke('remove-watch-folder', workspaceId, folderId),
+  setWatchFolderEnabled: (workspaceId, folderId, enabled) => ipcRenderer.invoke('set-watch-folder-enabled', workspaceId, folderId, enabled),
+  getWatchedRenameSuggestions: (workspaceId) => ipcRenderer.invoke('get-watched-rename-suggestions', workspaceId),
+  dismissWatchedRenameSuggestions: (workspaceId, suggestionIds) => ipcRenderer.invoke('dismiss-watched-rename-suggestions', workspaceId, suggestionIds),
+  refreshWatchedRenameSuggestions: (workspaceId, suggestionIds) => ipcRenderer.invoke('refresh-watched-rename-suggestions', workspaceId, suggestionIds),
+  applyWatchedRenameSuggestions: (workspaceId, suggestionIds) => ipcRenderer.invoke('apply-watched-rename-suggestions', workspaceId, suggestionIds),
   
   // Directory operations
   loadDirectory: (path) => ipcRenderer.invoke('load-directory', path),
@@ -70,6 +79,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onRenameProgress: createEventHandler('rename-progress'),
   onSortProgress: createEventHandler('sort-progress'),
   onOllamaModelPullProgress: createEventHandler('ollama-model-pull-progress'),
+  onWatchFoldersChanged: createEventHandler('watch-folders-changed'),
+  onWatchedRenameSuggestionsChanged: createEventHandler('watched-rename-suggestions-changed'),
 
   // Auto-update operations
   getAppVersion: () => ipcRenderer.invoke('get-app-version'),

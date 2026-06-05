@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useCallback, useState } from "react";
 import { motion } from "framer-motion";
 import {
   Drawer,
@@ -46,6 +46,7 @@ import {
   DragIndicator as DragIndicatorIcon,
 } from "@mui/icons-material";
 import { useWorkspace, Workspace } from "../contexts/WorkspaceContext";
+import type { CustomSection, CustomSectionItem } from "../electron";
 import Settings from "./Settings";
 import AnimatedButton from "./AnimatedButton";
 import AnimatedCard from "./AnimatedCard";
@@ -167,7 +168,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     e.preventDefault();
   };
 
-  const handleMouseMove = (e: MouseEvent) => {
+  const handleMouseMove = useCallback((e: MouseEvent) => {
     if (!isResizing) return;
     const newWidth = e.clientX;
     const minWidth = window.innerWidth < 768 ? 180 : 200;
@@ -175,11 +176,11 @@ const Sidebar: React.FC<SidebarProps> = ({
     if (newWidth >= minWidth && newWidth <= maxWidth) {
       setSidebarWidth(newWidth);
     }
-  };
+  }, [isResizing]);
 
-  const handleMouseUp = () => {
+  const handleMouseUp = useCallback(() => {
     setIsResizing(false);
-  };
+  }, []);
 
   React.useEffect(() => {
     if (isResizing) {
@@ -191,7 +192,7 @@ const Sidebar: React.FC<SidebarProps> = ({
       document.removeEventListener("mousemove", handleMouseMove);
       document.removeEventListener("mouseup", handleMouseUp);
     };
-  }, [isResizing]);
+  }, [handleMouseMove, handleMouseUp, isResizing]);
 
   const handleFolderClick = async (path: string) => {
     try {
@@ -954,7 +955,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   };
 
   // Sortable custom section component
-  const SortableCustomSection = ({ section }: { section: any }) => {
+  const SortableCustomSection = ({ section }: { section: CustomSection }) => {
     const [isOpen, setIsOpen] = useState(true);
     const { attributes, listeners, setNodeRef, transform, transition } =
       useSortable({ id: section.id });
@@ -1042,11 +1043,15 @@ const Sidebar: React.FC<SidebarProps> = ({
                 items={section.items}
                 itemHeight={48}
                 containerHeight={Math.min(300, section.items.length * 48)}
-                renderItem={(item: any, index: number) => (
+                renderItem={(item: CustomSectionItem, index: number) => (
                   <ListItem
                     key={index}
                     button
-                    onClick={() => handleFolderClick(item.path)}
+                    onClick={() => {
+                      if (item.path) {
+                        handleFolderClick(item.path);
+                      }
+                    }}
                     secondaryAction={
                       <IconButton
                         edge="end"
@@ -1074,11 +1079,15 @@ const Sidebar: React.FC<SidebarProps> = ({
               />
             ) : (
               <List dense disablePadding>
-                {section.items?.map((item: any, index: number) => (
+                {section.items?.map((item: CustomSectionItem, index: number) => (
                   <ListItem
                     key={index}
                     button
-                    onClick={() => handleFolderClick(item.path)}
+                    onClick={() => {
+                      if (item.path) {
+                        handleFolderClick(item.path);
+                      }
+                    }}
                     secondaryAction={
                       <IconButton
                         edge="end"
@@ -1214,80 +1223,6 @@ const Sidebar: React.FC<SidebarProps> = ({
         }}
         onMouseDown={handleMouseDown}
       />
-
-      {/* Profile Section - Commented out for now (login functionality not fully implemented) */}
-      {/*
-      <Box sx={{
-        p: { xs: 1, sm: 1.5 },
-        display: 'flex',
-        alignItems: 'center',
-        gap: { xs: 1, sm: 1.5 },
-        flexShrink: 0,
-        minWidth: 0
-      }}>
-        <Avatar sx={{
-          bgcolor: 'primary.main',
-          width: { xs: 32, sm: 40 },
-          height: { xs: 32, sm: 40 },
-          fontSize: { xs: '0.875rem', sm: '1rem' }
-        }}>
-          {user ? user.email.charAt(0).toUpperCase() : 'U'}
-        </Avatar>
-        <Box sx={{
-          flex: 1,
-          minWidth: 0,
-          overflow: 'hidden'
-        }}>
-          {user ? (
-            <>
-              <Typography
-                variant="subtitle2"
-                sx={{
-                  fontFamily: 'var(--font-header)',
-                  fontSize: { xs: '0.75rem', sm: '0.875rem' },
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap'
-                }}
-              >
-                {user.email}
-              </Typography>
-              <LogoutButton />
-            </>
-          ) : (
-            <>
-              <Typography
-                variant="subtitle1"
-                sx={{
-                  fontFamily: 'var(--font-header)',
-                  fontSize: { xs: '0.875rem', sm: '1rem' },
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap'
-                }}
-              >
-                Not signed in
-              </Typography>
-              <Typography
-                variant="body2"
-                color="primary"
-                sx={{
-                  cursor: 'pointer',
-                  textDecoration: 'underline',
-                  fontFamily: 'var(--font-body)',
-                  fontSize: { xs: '0.75rem', sm: '0.875rem' }
-                }}
-                onClick={() => setLoginDialogOpen(true)}
-              >
-                Sign in
-              </Typography>
-            </>
-          )}
-        </Box>
-      </Box>
-
-      <Divider />
-      */}
 
       <DndContext
         sensors={sensors}
@@ -1475,16 +1410,6 @@ const Sidebar: React.FC<SidebarProps> = ({
         onAccentColorChange={onAccentColorChange}
         isOllamaAvailable={isOllamaAvailable}
       />
-
-      {/* LoginDialog - Commented out for now (login functionality not fully implemented) */}
-      {/*
-      <LoginDialog
-        open={loginDialogOpen}
-        onClose={() => setLoginDialogOpen(false)}
-        onLogin={handleLogin}
-        darkMode={darkMode}
-      />
-      */}
 
       <Popover
         open={Boolean(emojiPickerAnchor)}

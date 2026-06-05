@@ -1,6 +1,8 @@
 import { Provider, ProviderConfig, Message, ImageValidationResult } from './Provider';
 import axios from 'axios';
 
+const VALIDATION_TIMEOUT_MS = 15000;
+
 export class OpenAIProvider extends Provider {
   constructor() {
     super();
@@ -12,7 +14,6 @@ export class OpenAIProvider extends Provider {
     ];
     this.supportsVision = true;
     this.maxImagesPerRequest = 85;
-    this.requiresAuth = false; // OpenAI doesn't require user auth, just API key
   }
 
   /**
@@ -36,7 +37,7 @@ export class OpenAIProvider extends Provider {
           }],
           max_tokens: 1
         },
-        { headers }
+        { headers, timeout: VALIDATION_TIMEOUT_MS }
       );
       return true;
     } catch (error) {

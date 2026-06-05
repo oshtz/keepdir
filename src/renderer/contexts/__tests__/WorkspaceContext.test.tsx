@@ -10,6 +10,7 @@ const mockElectronAPI = {
   getWorkspaceSettings: jest.fn(),
   saveWorkspaceSetting: jest.fn(),
   getWorkspaceSetting: jest.fn(),
+  setActiveWatchWorkspace: jest.fn(),
   loadDirectory: jest.fn(),
   exportWorkspace: jest.fn(),
   importWorkspace: jest.fn(),
@@ -60,6 +61,7 @@ describe('WorkspaceContext', () => {
     mockElectronAPI.saveWorkspace.mockResolvedValue({ success: true });
     mockElectronAPI.getWorkspaceSettings.mockResolvedValue(null);
     mockElectronAPI.saveWorkspaceSetting.mockResolvedValue({ success: true });
+    mockElectronAPI.setActiveWatchWorkspace.mockResolvedValue({ success: true });
     mockElectronAPI.loadDirectory.mockResolvedValue({ success: true });
     mockElectronAPI.getCustomSections.mockResolvedValue({ success: true, sections: [] });
   });

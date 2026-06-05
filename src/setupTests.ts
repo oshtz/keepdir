@@ -78,6 +78,15 @@ const mockElectronAPI = {
   getWorkspaceSettings: jest.fn(),
   getWorkspaceSetting: jest.fn(),
   saveWorkspaceSetting: jest.fn(),
+  setActiveWatchWorkspace: jest.fn(),
+  getWatchFolders: jest.fn(),
+  saveWatchFolder: jest.fn(),
+  removeWatchFolder: jest.fn(),
+  setWatchFolderEnabled: jest.fn(),
+  getWatchedRenameSuggestions: jest.fn(),
+  dismissWatchedRenameSuggestions: jest.fn(),
+  refreshWatchedRenameSuggestions: jest.fn(),
+  applyWatchedRenameSuggestions: jest.fn(),
   
   // Custom sections
   getCustomSections: jest.fn(),
@@ -92,11 +101,6 @@ const mockElectronAPI = {
   getDatabaseStats: jest.fn(),
   cleanupCache: jest.fn(),
   optimizeDatabase: jest.fn(),
-  
-  // User auth
-  saveUserAuth: jest.fn(),
-  loadUserAuth: jest.fn(),
-  clearUserAuth: jest.fn(),
   
   // File analysis
   analyzeDirectoryForSort: jest.fn(),
@@ -119,6 +123,8 @@ const mockElectronAPI = {
   onAnalyzeProgress: jest.fn(() => jest.fn()),
   onRenameProgress: jest.fn(() => jest.fn()),
   onSortProgress: jest.fn(() => jest.fn()),
+  onWatchFoldersChanged: jest.fn(() => jest.fn()),
+  onWatchedRenameSuggestionsChanged: jest.fn(() => jest.fn()),
   onOllamaModelPullProgress: jest.fn(() => jest.fn()),
   onUpdateDownloadProgress: jest.fn(() => jest.fn()),
   

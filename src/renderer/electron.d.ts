@@ -6,6 +6,25 @@ export interface FileInfo {
   modified: Date;
 }
 
+export type JsonPrimitive = string | number | boolean | null;
+export type JsonValue =
+  | JsonPrimitive
+  | JsonValue[]
+  | { [key: string]: JsonValue };
+
+export type ViewMode =
+  | 'grid'
+  | 'list'
+  | 'table'
+  | 'tiles'
+  | 'compact'
+  | 'details';
+
+export interface ApiResult {
+  success?: boolean;
+  error?: string;
+}
+
 export interface FileRename {
   originalName: string;
   suggestedName: string;
@@ -37,14 +56,14 @@ export interface RenameSuggestions {
 export interface Settings {
   selectedProvider?: string;
   selectedModel?: string;
-  apiKeys: {
+  apiKeys?: {
     openai?: string;
     anthropic?: string;
     google?: string;
     openrouter?: string;
   };
-  renameFiles: boolean;
-  [key: string]: any;
+  renameFiles?: boolean;
+  [key: string]: unknown;
 }
 
 export interface ProgressInfo {
@@ -106,34 +125,182 @@ export interface FolderItem {
   path: string;
 }
 
+export interface WorkspaceTheme {
+  name: string;
+  accentColor: string;
+  darkMode: boolean;
+  backgroundGradient?: string;
+  customColors?: {
+    primary?: string;
+    secondary?: string;
+    background?: string;
+    surface?: string;
+  };
+}
+
 export interface Workspace {
   id: string;
   name: string;
   emoji: string;
 }
 
+export interface CustomSectionItem {
+  id: string;
+  name?: string;
+  path?: string;
+  type?: string;
+}
+
+export interface CustomSectionItemInput {
+  id?: string;
+  name?: string;
+  path?: string;
+  type?: string;
+}
+
+export interface CustomSection {
+  id: string;
+  workspace_id?: string;
+  name: string;
+  icon?: string | null;
+  color?: string | null;
+  items: CustomSectionItem[];
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface CustomSectionData {
+  name: string;
+  icon?: string;
+  color?: string;
+  items?: CustomSectionItemInput[];
+}
+
+export interface CustomSectionUpdates {
+  name?: string;
+  icon?: string;
+  color?: string;
+  items?: CustomSectionItem[];
+}
+
+export interface WorkspaceSettings {
+  recentFolders?: string[];
+  favoriteFolders?: FolderItem[];
+  sectionOrder?: string[];
+  sectionVisibility?: Record<string, boolean>;
+  workspaceTheme?: WorkspaceTheme | null;
+  viewMode?: ViewMode;
+  error?: string;
+}
+
+export interface WatchFolder {
+  id: string;
+  path: string;
+  enabled: boolean;
+  createdAt?: string;
+}
+
+export type WatchedRenameSuggestionStatus =
+  | 'detected'
+  | 'stabilizing'
+  | 'queued'
+  | 'analyzing'
+  | 'suggested'
+  | 'error'
+  | 'dismissed'
+  | 'applied'
+  | 'stale';
+
+export interface WatchedRenameSuggestion {
+  id: string;
+  workspaceId: string;
+  folderPath: string;
+  filePath: string;
+  originalName: string;
+  suggestedName?: string | null;
+  reason?: string | null;
+  status: WatchedRenameSuggestionStatus;
+  fileSize: number;
+  fileMtimeMs: number;
+  errorMessage?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ImportOptions {
+  generateNewId?: boolean;
+  overwriteExisting?: boolean;
+}
+
+export interface WorkspaceImportSummary {
+  workspace: string;
+  settings: number;
+  customSections: number;
+}
+
+export interface AllDataImportSummary {
+  workspaces: number;
+  settings: number;
+  customSections: number;
+}
+
+export interface ImportResult<TSummary> extends ApiResult {
+  imported?: TSummary;
+  cancelled?: boolean;
+}
+
+export interface ExportResult extends ApiResult {
+  filePath?: string;
+  cancelled?: boolean;
+}
+
+export interface CacheStats {
+  totalEntries: number;
+  totalSizeBytes: number;
+  totalSizeMB: number;
+  oldestEntry: string | null;
+  newestEntry: string | null;
+}
+
+export interface DatabaseStats {
+  sizeBytes: number;
+  sizeMB: number;
+  pageCount: number;
+  pageSize: number;
+  freelistCount: number;
+}
+
 export interface ElectronAPI {
   // Workspace operations
   getWorkspaces: () => Promise<Workspace[]>;
-  saveWorkspace: (workspace: Workspace) => Promise<{ success?: boolean, error?: string }>;
-  deleteWorkspace: (id: string) => Promise<{ success?: boolean, error?: string }>;
-  exportWorkspace: (workspaceId: string) => Promise<{ success?: boolean, filePath?: string, cancelled?: boolean, error?: string }>;
-  importWorkspace: (options?: any) => Promise<{ success?: boolean, workspaceId?: string, imported?: any, cancelled?: boolean, error?: string }>;
-  exportAllData: () => Promise<{ success?: boolean, filePath?: string, cancelled?: boolean, error?: string }>;
-  importAllData: (options?: any) => Promise<{ success?: boolean, imported?: any, errors?: string[], cancelled?: boolean, error?: string }>;
+  saveWorkspace: (workspace: Workspace) => Promise<ApiResult>;
+  deleteWorkspace: (id: string) => Promise<ApiResult>;
+  exportWorkspace: (workspaceId: string) => Promise<ExportResult>;
+  importWorkspace: (options?: ImportOptions) => Promise<ImportResult<WorkspaceImportSummary> & { workspaceId?: string }>;
+  exportAllData: () => Promise<ExportResult>;
+  importAllData: (options?: ImportOptions) => Promise<ImportResult<AllDataImportSummary> & { errors?: string[] }>;
 
   // Custom sections operations
-  getCustomSections: (workspaceId: string) => Promise<{ success?: boolean, sections?: any[], error?: string }>;
-  createCustomSection: (workspaceId: string, sectionData: any) => Promise<{ success?: boolean, section?: any, error?: string }>;
-  updateCustomSection: (sectionId: string, updates: any) => Promise<{ success?: boolean, error?: string }>;
-  deleteCustomSection: (sectionId: string) => Promise<{ success?: boolean, error?: string }>;
-  addItemToCustomSection: (sectionId: string, item: any) => Promise<{ success?: boolean, items?: any[], error?: string }>;
-  removeItemFromCustomSection: (sectionId: string, itemId: string) => Promise<{ success?: boolean, items?: any[], error?: string }>;
+  getCustomSections: (workspaceId: string) => Promise<ApiResult & { sections?: CustomSection[] }>;
+  createCustomSection: (workspaceId: string, sectionData: CustomSectionData) => Promise<ApiResult & { section?: CustomSection }>;
+  updateCustomSection: (sectionId: string, updates: CustomSectionUpdates) => Promise<ApiResult>;
+  deleteCustomSection: (sectionId: string) => Promise<ApiResult>;
+  addItemToCustomSection: (sectionId: string, item: CustomSectionItemInput) => Promise<ApiResult & { items?: CustomSectionItem[] }>;
+  removeItemFromCustomSection: (sectionId: string, itemId: string) => Promise<ApiResult & { items?: CustomSectionItem[] }>;
 
   // Workspace settings
-  getWorkspaceSettings: (workspaceId: string) => Promise<{ recentFolders?: string[], favoriteFolders?: FolderItem[], workspaceTheme?: any, error?: string }>;
-  getWorkspaceSetting: (workspaceId: string, key: string) => Promise<any>;
-  saveWorkspaceSetting: (workspaceId: string, key: string, value: any) => Promise<{ success?: boolean, error?: string }>;
+  getWorkspaceSettings: (workspaceId: string) => Promise<WorkspaceSettings>;
+  getWorkspaceSetting: (workspaceId: string, key: string) => Promise<unknown>;
+  saveWorkspaceSetting: (workspaceId: string, key: string, value: unknown) => Promise<ApiResult>;
+  setActiveWatchWorkspace: (workspaceId: string | null) => Promise<ApiResult>;
+  getWatchFolders: (workspaceId: string) => Promise<ApiResult & { folders?: WatchFolder[] }>;
+  saveWatchFolder: (workspaceId: string, folder: WatchFolder) => Promise<ApiResult & { folder?: WatchFolder }>;
+  removeWatchFolder: (workspaceId: string, folderId: string) => Promise<ApiResult>;
+  setWatchFolderEnabled: (workspaceId: string, folderId: string, enabled: boolean) => Promise<ApiResult>;
+  getWatchedRenameSuggestions: (workspaceId: string) => Promise<ApiResult & { suggestions?: WatchedRenameSuggestion[] }>;
+  dismissWatchedRenameSuggestions: (workspaceId: string, suggestionIds: string[]) => Promise<ApiResult>;
+  refreshWatchedRenameSuggestions: (workspaceId: string, suggestionIds: string[]) => Promise<ApiResult>;
+  applyWatchedRenameSuggestions: (workspaceId: string, suggestionIds: string[]) => Promise<ApiResult & { results?: RenameApplyResult[] }>;
 
   // Window controls
   minimizeWindow: () => void;
@@ -143,7 +310,7 @@ export interface ElectronAPI {
   // Directory operations
   loadDirectory: (path: string) => Promise<{ files?: FileInfo[], error?: string }>;
   selectDirectory: () => Promise<string | null>;
-  saveSettings: (settings: Record<string, any>) => Promise<{ success?: boolean, error?: string }>;
+  saveSettings: (settings: Record<string, unknown>) => Promise<ApiResult>;
   loadSettings: () => Promise<{ settings?: Settings, error?: string }>;
   getProviderModels: (provider: string) => Promise<{ models?: string[], defaultModel?: string, error?: string }>;
   analyzeDirectory: (path: string, renameFiles: boolean) => Promise<{ suggestions?: SortSuggestions, error?: string }>;
@@ -157,27 +324,29 @@ export interface ElectronAPI {
   revealInFolder: (path: string) => Promise<{ success?: boolean, error?: string }>;
   
   // Database optimization operations
-  getCacheStats: () => Promise<{ success?: boolean, stats?: any, error?: string }>;
-  getDatabaseStats: () => Promise<{ success?: boolean, stats?: any, error?: string }>;
-  cleanupCache: (maxAgeHours?: number) => Promise<{ success?: boolean, error?: string }>;
-  optimizeDatabase: () => Promise<{ success?: boolean, error?: string }>;
+  getCacheStats: () => Promise<ApiResult & { stats?: CacheStats }>;
+  getDatabaseStats: () => Promise<ApiResult & { stats?: DatabaseStats }>;
+  cleanupCache: (maxAgeHours?: number) => Promise<ApiResult>;
+  optimizeDatabase: () => Promise<ApiResult>;
   
   // Progress event handlers
   onAnalyzeProgress: (callback: (progress: ProgressInfo) => void) => () => void;
   onRenameProgress: (callback: (progress: ProgressInfo) => void) => () => void;
   onSortProgress: (callback: (progress: ProgressInfo) => void) => () => void;
+  onWatchFoldersChanged: (callback: (payload: { workspaceId: string; error?: string }) => void) => () => void;
+  onWatchedRenameSuggestionsChanged: (callback: (payload: { workspaceId: string }) => void) => () => void;
   
   // Ollama operations
-  pullOllamaModel: (modelName: string) => Promise<{ success?: boolean, error?: string }>;
+  pullOllamaModel: (modelName: string) => Promise<ApiResult>;
   listOllamaModels: () => Promise<{ models?: OllamaModelInfo[], error?: string }>;
-  deleteOllamaModel: (modelName: string) => Promise<{ success?: boolean, error?: string }>;
+  deleteOllamaModel: (modelName: string) => Promise<ApiResult>;
   onOllamaModelPullProgress: (callback: (progress: OllamaProgressInfo) => void) => () => void;
 
   // Auto-update operations
   getAppVersion: () => Promise<string>;
   checkForUpdate: () => Promise<{ updateInfo?: UpdateInfo | null, error?: string }>;
   downloadUpdate: (updateInfo: UpdateInfo) => Promise<{ updatePath?: string, error?: string }>;
-  installUpdate: (updatePath: string) => Promise<{ success?: boolean, error?: string }>;
+  installUpdate: (updatePath: string) => Promise<ApiResult>;
   onUpdateDownloadProgress: (callback: (progress: UpdateDownloadProgress) => void) => () => void;
 }
 

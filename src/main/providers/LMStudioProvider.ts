@@ -11,7 +11,6 @@ export class LMStudioProvider extends Provider {
     this.supportedModels = []; // Will be populated dynamically from LM Studio
     this.supportsVision = true; // LM Studio supports vision models if loaded
     this.maxImagesPerRequest = 10;
-    this.requiresAuth = false; // LM Studio doesn't require authentication
   }
 
   /**
@@ -23,7 +22,7 @@ export class LMStudioProvider extends Provider {
       // Just check if LM Studio is running by trying to connect
       await axios.get(`${this.baseUrl}/models`, { timeout: 5000 });
       return { valid: true };
-    } catch (error) {
+    } catch {
       return {
         valid: false,
         error: 'LM Studio is not running. Please start LM Studio and load a model first.'

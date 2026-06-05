@@ -2,6 +2,7 @@ const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
 const fs = require('fs').promises;
 const path = require('path');
 const axios = require('axios');
+const { randomUUID } = require('crypto');
 const { spawn } = require('child_process');
 const Database = require('./database');
 const updater = require('./updater');
@@ -9,17 +10,13 @@ const {
   applyRenameSuggestions,
   applySortSuggestions
 } = require('./fileOperations');
+const { createAnalysisService } = require('./analysisService');
+const { getProvider } = require('./providers');
+const { createWatchFolderManager } = require('./watchFolderManager');
 const {
-  normalizeRenameSuggestions,
-  normalizeSortSuggestions
-} = require('./suggestionValidation');
-const {
-  assertNotSymbolicLink,
-  isAnalyzableDirectoryEntry,
   normalizeCacheAgeHours,
   normalizeOllamaModelName,
   normalizeProviderName,
-  normalizeSelectedAnalysisEntries,
   requireExistingDirectoryPath,
   requireExistingFileOrDirectoryPath
 } = require('./ipcValidation');
@@ -39,6 +36,11 @@ const {
   normalizeWorkspaceId,
   normalizeWorkspaceSettingRequest
 } = require('./stateValidation');
+const {
+  normalizeWatchFolder,
+  normalizeWatchedSuggestionIds,
+  toWatchedRenameSuggestionsPayload
+} = require('./watchFolderValidation');
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (require('electron-squirrel-startup')) {
@@ -52,12 +54,6 @@ const debugLog = (...args) => {
     console.log(...args);
   }
 };
-
-function normalizeAnalysisPath(filePath) {
-  return Buffer.from(filePath.replace(/\\/g, '/'), 'utf8')
-    .toString()
-    .normalize('NFC');
-}
 
 // Enable debug logging only in development
 if (isDev) {
@@ -124,7 +120,6 @@ registerHandler('get-provider-models', async (_event, providerName) => {
   try {
     const normalizedProviderName = normalizeProviderName(providerName);
     const settings = await db.getAllSettings();
-    const { getProvider } = require('./providers');
     const provider = getProvider(normalizedProviderName);
 
     if (!provider) {
@@ -184,7 +179,9 @@ function createWindow() {
     mainWindow.loadURL(loadUrl).catch(err => {
       console.error('Failed to load URL:', err);
     });
-    mainWindow.webContents.openDevTools();
+    if (process.env.KEEPDIR_E2E !== '1') {
+      mainWindow.webContents.openDevTools();
+    }
   } else {
     const filePath = path.join(__dirname, '../../dist/index.html');
     debugLog('Loading from file:', filePath);
@@ -217,6 +214,10 @@ function createWindow() {
   });
 
   registerHandler('select-directory', async () => {
+    if (process.env.KEEPDIR_E2E === '1' && process.env.KEEPDIR_E2E_SELECT_DIRECTORY) {
+      return requireExistingDirectoryPath(process.env.KEEPDIR_E2E_SELECT_DIRECTORY);
+    }
+
     const result = await dialog.showOpenDialog(mainWindow, {
       properties: ['openDirectory']
     });
@@ -376,6 +377,30 @@ function createWindow() {
     debugLog('Renderer Console:', message);
   });
 
+  const analysisService = createAnalysisService({
+    db,
+    getProvider,
+    logger: {
+      debug: debugLog,
+      error: console.error
+    }
+  });
+  const notifyRenderer = (channel, payload) => {
+    if (!mainWindow.isDestroyed()) {
+      mainWindow.webContents.send(channel, payload);
+    }
+  };
+  const watchFolderManager = createWatchFolderManager({
+    db,
+    analysisService,
+    notify: notifyRenderer,
+    createId: () => randomUUID()
+  });
+  if (global.watchFolderManager) {
+    global.watchFolderManager.shutdown();
+  }
+  global.watchFolderManager = watchFolderManager;
+
   // Workspace handlers
   registerHandler('get-workspaces', async () => {
     try {
@@ -441,6 +466,211 @@ function createWindow() {
       return { success: true };
     } catch (error) {
       console.error('Failed to save workspace setting:', error);
+      return { error: error.message };
+    }
+  });
+
+  registerHandler('set-active-watch-workspace', async (_event, workspaceId) => {
+    try {
+      const normalizedWorkspaceId = workspaceId ? normalizeWorkspaceId(workspaceId) : null;
+      await watchFolderManager.setActiveWorkspace(normalizedWorkspaceId);
+      return { success: true };
+    } catch (error) {
+      console.error('Failed to set active watch workspace:', error);
+      return { error: error.message };
+    }
+  });
+
+  registerHandler('get-watch-folders', async (_event, workspaceId) => {
+    try {
+      const normalizedWorkspaceId = normalizeWorkspaceId(workspaceId);
+      return {
+        success: true,
+        folders: await db.getWatchFolders(normalizedWorkspaceId)
+      };
+    } catch (error) {
+      return { error: error.message };
+    }
+  });
+
+  registerHandler('save-watch-folder', async (_event, workspaceId, folder) => {
+    try {
+      const normalizedWorkspaceId = normalizeWorkspaceId(workspaceId);
+      const normalizedFolder = normalizeWatchFolder(folder);
+      const result = await db.saveWatchFolder(normalizedWorkspaceId, normalizedFolder);
+      await watchFolderManager.reloadWatchers();
+      notifyRenderer('watch-folders-changed', { workspaceId: normalizedWorkspaceId });
+      return result;
+    } catch (error) {
+      return { error: error.message };
+    }
+  });
+
+  registerHandler('remove-watch-folder', async (_event, workspaceId, folderId) => {
+    try {
+      const normalizedWorkspaceId = normalizeWorkspaceId(workspaceId);
+      const result = await db.removeWatchFolder(normalizedWorkspaceId, folderId);
+      await watchFolderManager.reloadWatchers();
+      notifyRenderer('watch-folders-changed', { workspaceId: normalizedWorkspaceId });
+      return result;
+    } catch (error) {
+      return { error: error.message };
+    }
+  });
+
+  registerHandler('set-watch-folder-enabled', async (_event, workspaceId, folderId, enabled) => {
+    try {
+      const normalizedWorkspaceId = normalizeWorkspaceId(workspaceId);
+      const result = await db.setWatchFolderEnabled(normalizedWorkspaceId, folderId, enabled === true);
+      await watchFolderManager.reloadWatchers();
+      notifyRenderer('watch-folders-changed', { workspaceId: normalizedWorkspaceId });
+      return result;
+    } catch (error) {
+      return { error: error.message };
+    }
+  });
+
+  registerHandler('get-watched-rename-suggestions', async (_event, workspaceId) => {
+    try {
+      const normalizedWorkspaceId = normalizeWorkspaceId(workspaceId);
+      const rows = await db.getWatchedRenameSuggestions(normalizedWorkspaceId);
+      return {
+        success: true,
+        suggestions: toWatchedRenameSuggestionsPayload(rows)
+      };
+    } catch (error) {
+      return { error: error.message };
+    }
+  });
+
+  registerHandler('dismiss-watched-rename-suggestions', async (_event, workspaceId, suggestionIds) => {
+    try {
+      const normalizedWorkspaceId = normalizeWorkspaceId(workspaceId);
+      const ids = normalizeWatchedSuggestionIds(suggestionIds);
+      await Promise.all(ids.map((id) => (
+        db.updateWatchedRenameSuggestionStatus(normalizedWorkspaceId, id, 'dismissed')
+      )));
+      notifyRenderer('watched-rename-suggestions-changed', { workspaceId: normalizedWorkspaceId });
+      return { success: true };
+    } catch (error) {
+      return { error: error.message };
+    }
+  });
+
+  registerHandler('refresh-watched-rename-suggestions', async (_event, workspaceId, suggestionIds) => {
+    try {
+      const normalizedWorkspaceId = normalizeWorkspaceId(workspaceId);
+      const ids = normalizeWatchedSuggestionIds(suggestionIds);
+      const rows = await db.getWatchedRenameSuggestionsByIds(normalizedWorkspaceId, ids);
+      for (const row of rows) {
+        await watchFolderManager.handleDetectedPath({
+          workspaceId: normalizedWorkspaceId,
+          folderPath: row.folder_path,
+          filePath: row.file_path
+        });
+      }
+      notifyRenderer('watched-rename-suggestions-changed', { workspaceId: normalizedWorkspaceId });
+      return { success: true };
+    } catch (error) {
+      return { error: error.message };
+    }
+  });
+
+  registerHandler('apply-watched-rename-suggestions', async (event, workspaceId, suggestionIds) => {
+    try {
+      const normalizedWorkspaceId = normalizeWorkspaceId(workspaceId);
+      const ids = normalizeWatchedSuggestionIds(suggestionIds);
+      const rows = await db.getWatchedRenameSuggestionsByIds(normalizedWorkspaceId, ids);
+      const groupedByFolder = new Map();
+
+      for (const row of rows) {
+        if (row.status !== 'suggested' || !row.suggested_name) {
+          await db.updateWatchedRenameSuggestionStatus(
+            normalizedWorkspaceId,
+            row.id,
+            'error',
+            'No suggested filename to apply'
+          );
+          continue;
+        }
+
+        let stats;
+        try {
+          stats = await fs.lstat(row.file_path);
+        } catch (error) {
+          if (error.code === 'ENOENT' || error.code === 'ENOTDIR') {
+            await db.updateWatchedRenameSuggestionStatus(
+              normalizedWorkspaceId,
+              row.id,
+              'stale',
+              'File changed since suggestion was generated'
+            );
+            continue;
+          }
+          throw error;
+        }
+
+        const isStale = !stats.isFile()
+          || stats.isSymbolicLink()
+          || stats.size !== row.file_size
+          || stats.mtimeMs !== row.file_mtime_ms;
+        if (isStale) {
+          await db.updateWatchedRenameSuggestionStatus(
+            normalizedWorkspaceId,
+            row.id,
+            'stale',
+            'File changed since suggestion was generated'
+          );
+          continue;
+        }
+
+        if (!groupedByFolder.has(row.folder_path)) {
+          groupedByFolder.set(row.folder_path, []);
+        }
+        groupedByFolder.get(row.folder_path).push({
+          id: row.id,
+          originalName: row.original_name,
+          suggestedName: row.suggested_name,
+          reason: row.reason || ''
+        });
+      }
+
+      const results = [];
+      for (const [directoryPath, renames] of groupedByFolder.entries()) {
+        const result = await applyRenameSuggestions({
+          directoryPath,
+          suggestions: {
+            categories: [{
+              name: 'Files to Rename',
+              description: 'Files that will be renamed',
+              suggestedPath: '.',
+              files: renames.map((rename) => rename.originalName),
+              renames
+            }]
+          },
+          db,
+          onProgress: (channel, progressPayload) => event.sender.send(channel, progressPayload)
+        });
+        results.push(result);
+
+        const errorsByFile = new Map((result.errors || []).map((item) => [item.file, item.error]));
+        for (const rename of renames) {
+          const error = errorsByFile.get(rename.originalName);
+          await db.updateWatchedRenameSuggestionStatus(
+            normalizedWorkspaceId,
+            rename.id,
+            error ? 'error' : 'applied',
+            error || null
+          );
+        }
+      }
+
+      notifyRenderer('watched-rename-suggestions-changed', { workspaceId: normalizedWorkspaceId });
+      return {
+        success: results.every((result) => result.success),
+        results
+      };
+    } catch (error) {
       return { error: error.message };
     }
   });
@@ -557,7 +787,7 @@ function createWindow() {
     }
   });
 
-  registerHandler('export-all-data', async (event) => {
+  registerHandler('export-all-data', async () => {
     try {
       const exportData = await db.exportAllData();
 
@@ -685,489 +915,43 @@ function createWindow() {
 
   // Register IPC handlers for file analysis
   registerHandler('analyze-directory-for-sort', async (event, directoryPath, selectedPaths) => {
-    return analyzeDirectory(event.sender, directoryPath, false, selectedPaths);
+    return analysisService.analyzeDirectory({
+      sender: event.sender,
+      directoryPath,
+      renameFiles: false,
+      selectedPaths
+    });
   });
 
   registerHandler('analyze-directory-for-rename', async (event, directoryPath, selectedPaths) => {
-    return analyzeDirectory(event.sender, directoryPath, true, selectedPaths);
+    return analysisService.analyzeDirectory({
+      sender: event.sender,
+      directoryPath,
+      renameFiles: true,
+      selectedPaths
+    });
   });
 
   // Register IPC handlers for fresh analysis (bypassing cache)
   registerHandler('analyze-directory-for-sort-fresh', async (event, directoryPath, selectedPaths) => {
-    return analyzeDirectory(event.sender, directoryPath, false, selectedPaths, true);
+    return analysisService.analyzeDirectory({
+      sender: event.sender,
+      directoryPath,
+      renameFiles: false,
+      selectedPaths,
+      forceRefresh: true
+    });
   });
 
   registerHandler('analyze-directory-for-rename-fresh', async (event, directoryPath, selectedPaths) => {
-    return analyzeDirectory(event.sender, directoryPath, true, selectedPaths, true);
+    return analysisService.analyzeDirectory({
+      sender: event.sender,
+      directoryPath,
+      renameFiles: true,
+      selectedPaths,
+      forceRefresh: true
+    });
   });
-
-  // AI File Analysis handlers with caching
-  async function analyzeDirectory(sender, directoryPath, renameFiles, selectedPaths, forceRefresh = false) {
-    try {
-      directoryPath = await requireExistingDirectoryPath(directoryPath);
-      const selectedFileEntries = await normalizeSelectedAnalysisEntries(selectedPaths, directoryPath);
-
-      let allFileEntries;
-
-      if (selectedFileEntries && selectedFileEntries.length > 0) {
-        // If selectedPaths is provided, only process those validated direct-child files.
-        allFileEntries = selectedFileEntries;
-      } else {
-        // Otherwise process all non-directory files
-        const files = await fs.readdir(directoryPath, { withFileTypes: true });
-        allFileEntries = files
-          .filter(isAnalyzableDirectoryEntry)
-          .map(file => ({
-            name: file.name,
-            path: path.join(directoryPath, file.name)
-          }));
-      }
-
-      const filePaths = allFileEntries.map(entry => entry.path);
-      const fileEntryByPath = new Map(
-        allFileEntries.map(entry => [normalizeAnalysisPath(entry.path), entry])
-      );
-
-      // Use the appropriate unprocessed files method based on operation
-      const unprocessedPaths = renameFiles
-        ? await db.getUnprocessedRenames(filePaths)
-        : await db.getUnprocessedSorts(filePaths);
-      const unprocessedEntries = unprocessedPaths
-        .map(filePath => fileEntryByPath.get(normalizeAnalysisPath(filePath)))
-        .filter(Boolean);
-
-      // If all files are processed and not forcing refresh, return cached suggestions
-      if (unprocessedEntries.length === 0 && !forceRefresh) {
-        const cachedResults = await Promise.all(
-          filePaths.map(async (filePath) => {
-            const processed = renameFiles
-              ? await db.getProcessedRename(filePath)
-              : await db.getProcessedSort(filePath);
-            if (processed && processed.status === 'suggested') {
-              if (renameFiles) {
-                return {
-                  originalName: processed.original_name,
-                  suggestedName: processed.suggested_name,
-                  reason: processed.reason
-                };
-              } else {
-                return {
-                  originalPath: processed.original_path,
-                  suggestedPath: processed.suggested_path,
-                  category: processed.category
-                };
-              }
-            }
-            return null;
-          })
-        );
-
-        const validResults = cachedResults.filter(r => r !== null);
-        if (validResults.length > 0) {
-          if (renameFiles) {
-            return {
-              suggestions: {
-                categories: [{
-                  name: "Files to Rename",
-                  description: "Files that will be renamed",
-                  suggestedPath: ".",
-                  files: validResults.map(r => r.originalName),
-                  renames: validResults
-                }]
-              }
-            };
-          } else {
-            return {
-              suggestions: {
-                categories: validResults.map(r => ({
-                  name: r.category,
-                  description: "Suggested organization category",
-                  suggestedPath: r.suggestedPath,
-                  files: [path.basename(r.originalPath)]
-                }))
-              }
-            };
-          }
-        }
-      }
-
-      // If forcing refresh, analyze all files regardless of cache status
-      const fileEntries = forceRefresh ? allFileEntries.slice(0, 50) : unprocessedEntries.slice(0, 50);
-      const fileNames = fileEntries.map(entry => entry.name);
-
-      // Process files in smaller batches for API calls
-      const BATCH_SIZE = 10;
-      let allSuggestions = renameFiles ? { renames: [] } : { categories: [] };
-
-      // Get settings from database
-      const settings = await db.getAllSettings();
-      const provider = normalizeProviderName(settings.selectedProvider || 'openai');
-      const apiKey = settings.apiKeys?.[provider];
-
-      // Ollama doesn't require an API key since it runs locally
-      if (!apiKey && !['ollama', 'lmstudio'].includes(provider)) {
-        return { error: `${provider} API key not configured` };
-      }
-
-      const { getProvider } = require('./providers');
-      const selectedProvider = getProvider(provider);
-
-      if (!selectedProvider) {
-        return { error: `Provider ${provider} not found` };
-      }
-
-      const MAX_IMAGE_BYTES = 1024 * 1024;
-      const imageFilePattern = /\.(jpg|jpeg|png)$/i;
-      const modelName = settings?.selectedModel || selectedProvider.defaultModel;
-
-      const supportsVisionModel = (providerName, modelValue) => {
-        const normalized = (modelValue || '').toLowerCase();
-        if (!normalized) {
-          return true;
-        }
-        if (providerName === 'openai') {
-          return (
-            normalized.includes('gpt-4o') ||
-            normalized.includes('gpt-4.1') ||
-            normalized.includes('gpt-4-turbo') ||
-            normalized.includes('gpt-4')
-          );
-        }
-        if (providerName === 'anthropic') {
-          return normalized.startsWith('claude-3');
-        }
-        if (providerName === 'google') {
-          return normalized.startsWith('gemini');
-        }
-        if (providerName === 'openrouter' || providerName === 'lmstudio') {
-          return true;
-        }
-        return false;
-      };
-
-      const getImageMimeType = (fileName) => {
-        const ext = path.extname(fileName).toLowerCase();
-        if (ext === '.jpg' || ext === '.jpeg') {
-          return 'image/jpeg';
-        }
-        if (ext === '.png') {
-          return 'image/png';
-        }
-        return null;
-      };
-
-      const parseCachedImagePayload = (cachedContent) => {
-        if (!cachedContent) {
-          return null;
-        }
-        try {
-          const parsed = JSON.parse(cachedContent);
-          if (parsed && typeof parsed.base64 === 'string' && typeof parsed.mimeType === 'string') {
-            return parsed;
-          }
-        } catch (error) {
-          return null;
-        }
-        return null;
-      };
-
-      const compressImageBuffer = async (buffer, mimeType) => {
-        if (buffer.length <= MAX_IMAGE_BYTES) {
-          return { buffer, mimeType };
-        }
-
-        const sharp = require('sharp');
-        const metadata = await sharp(buffer).metadata();
-        const width = metadata.width || undefined;
-        const height = metadata.height || undefined;
-        let scale = 1;
-        let quality = 80;
-        let output = buffer;
-
-        for (let attempt = 0; attempt < 6; attempt++) {
-          let transformer = sharp(buffer).rotate();
-
-          if (width || height) {
-            transformer = transformer.resize(
-              width ? Math.max(1, Math.round(width * scale)) : undefined,
-              height ? Math.max(1, Math.round(height * scale)) : undefined,
-              { fit: 'inside', withoutEnlargement: true }
-            );
-          }
-
-          if (mimeType === 'image/jpeg') {
-            transformer = transformer.jpeg({ quality });
-          } else {
-            transformer = transformer.png({ compressionLevel: 9, palette: true });
-          }
-
-          output = await transformer.toBuffer();
-          if (output.length <= MAX_IMAGE_BYTES) {
-            return { buffer: output, mimeType };
-          }
-
-          if (mimeType === 'image/jpeg' && quality > 50) {
-            quality -= 10;
-          } else {
-            scale *= 0.85;
-          }
-        }
-
-        if (mimeType !== 'image/jpeg') {
-          let transformer = sharp(buffer).rotate();
-          if (width || height) {
-            transformer = transformer.resize(
-              width ? Math.max(1, Math.round(width * scale)) : undefined,
-              height ? Math.max(1, Math.round(height * scale)) : undefined,
-              { fit: 'inside', withoutEnlargement: true }
-            );
-          }
-          const fallback = await transformer.jpeg({ quality: 70 }).toBuffer();
-          if (fallback.length <= MAX_IMAGE_BYTES) {
-            return { buffer: fallback, mimeType: 'image/jpeg' };
-          }
-        }
-
-        return { buffer: output, mimeType };
-      };
-
-      const hasRenameImages = renameFiles && fileEntries.some(entry => imageFilePattern.test(entry.name));
-      if (hasRenameImages && !selectedProvider.supportsVision) {
-        return { error: `${provider} does not support image inputs for rename suggestions.` };
-      }
-      if (hasRenameImages && !supportsVisionModel(provider, modelName)) {
-        return {
-          error: `Selected model does not support image inputs. Please choose a vision-capable model for ${provider}.`
-        };
-      }
-
-      // Process files in batches with progress updates
-      for (let i = 0; i < fileNames.length; i += BATCH_SIZE) {
-        const batchFiles = fileEntries.slice(i, i + BATCH_SIZE);
-
-        // Send analyze progress update
-        sender.send('analyze-progress', {
-          current: i,
-          total: fileNames.length,
-          status: 'Analyzing files...',
-          currentFile: batchFiles[0]?.name || null
-        });
-
-        // Get file details for the batch
-        const fileDetails = await Promise.all(batchFiles.map(async ({ name: fileName, path: filePath }) => {
-          const stats = await fs.lstat(filePath);
-          assertNotSymbolicLink(stats, `Selected item ${fileName}`);
-          let base64Content = '';
-          let imageMimeType = '';
-          let isImageFile = false;
-
-          // Only process images and optimize image loading
-          const imageMimeTypeFromName = renameFiles ? getImageMimeType(fileName) : null;
-          isImageFile = stats.isFile() && !!imageMimeTypeFromName;
-
-          if (isImageFile) {
-            try {
-              const fileHash = await db.getFileHash(filePath);
-              const isCached = await db.isFileCached(filePath, fileHash);
-
-              if (isCached) {
-                const cachedContent = await db.getCachedContent(filePath);
-                const cachedPayload = parseCachedImagePayload(cachedContent);
-                if (cachedPayload) {
-                  base64Content = cachedPayload.base64;
-                  imageMimeType = cachedPayload.mimeType;
-                }
-              }
-
-              if (!base64Content) {
-                const imageBuffer = await fs.readFile(filePath);
-                const processed = await compressImageBuffer(imageBuffer, imageMimeTypeFromName);
-                base64Content = processed.buffer.toString('base64');
-                imageMimeType = processed.mimeType;
-                await db.cacheFile(
-                  filePath,
-                  fileHash,
-                  JSON.stringify({ base64: base64Content, mimeType: imageMimeType })
-                );
-              }
-            } catch (error) {
-              debugLog(`Could not process image file ${fileName}:`, error);
-            }
-          }
-
-          return {
-            name: fileName,
-            size: stats.size,
-            modified: stats.mtime,
-            base64Content,
-            imageMimeType,
-            isImageFile
-          };
-        }));
-
-        if (renameFiles) {
-          const failedImages = fileDetails.filter(
-            (file) => file.isImageFile && (!file.base64Content || !file.imageMimeType)
-          );
-          if (failedImages.length > 0) {
-            return {
-              error: `Failed to process images for rename: ${failedImages.map(f => f.name).join(', ')}`
-            };
-          }
-        }
-
-        const systemMessage = renameFiles
-          ? "You are a file renaming assistant. Analyze files and suggest descriptive filenames. For images, focus on key visual elements. IMPORTANT: Respond with ONLY valid JSON, no explanations or markdown. Your response must be parseable by JSON.parse()."
-          : "You are a file organization assistant. Analyze files and suggest logical organization categories. IMPORTANT: Respond with ONLY valid JSON, no explanations or markdown. Your response must be parseable by JSON.parse().";
-
-        const formatInstruction = renameFiles
-          ? 'Suggest descriptive filenames in this JSON format: {"renames":[{"originalName":"file.ext","suggestedName":"descriptive.ext","reason":"brief reason"}]}'
-          : 'Suggest organization in this JSON format: {"categories":[{"name":"category","description":"brief reason","suggestedPath":"path","files":["file.ext"]}]}';
-
-        const fileContentParts = [];
-        fileDetails.forEach((file) => {
-          const hasImage = renameFiles && file.base64Content && file.imageMimeType;
-          fileContentParts.push({
-            type: 'text',
-            text: hasImage ? `File: ${file.name} (image attached)` : `File: ${file.name}`
-          });
-          if (hasImage) {
-            fileContentParts.push({
-              type: 'image',
-              source: {
-                type: 'base64',
-                media_type: file.imageMimeType,
-                data: file.base64Content
-              }
-            });
-          }
-        });
-
-        const messages = [
-          {
-            role: "system",
-            content: [{ type: 'text', text: systemMessage }]
-          },
-          {
-            role: "user",
-            content: fileContentParts
-          },
-          {
-            role: "user",
-            content: [{ type: 'text', text: formatInstruction }]
-          }
-        ];
-
-        // Make API call with retry logic
-        let retries = 3;
-        let batchSuggestions;
-
-        while (retries > 0) {
-          try {
-            const response = await selectedProvider.sendMessage(messages, {
-              apiKey,
-              model: modelName,
-              maxTokens: 1000
-            });
-
-            // Remove any markdown formatting or extra text
-            const jsonContent = response.replace(/^```json\s*|\s*```$/g, '').trim();
-            batchSuggestions = JSON.parse(jsonContent);
-            break;
-          } catch (error) {
-            retries--;
-            if (retries === 0) throw error;
-            await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2s before retry
-          }
-        }
-
-        // Merge batch results
-        if (renameFiles) {
-          const batchRenames = Array.isArray(batchSuggestions?.renames) ? batchSuggestions.renames : [];
-          allSuggestions.renames.push(...batchRenames);
-        } else {
-          // Merge categories intelligently
-          const batchCategories = Array.isArray(batchSuggestions?.categories) ? batchSuggestions.categories : [];
-          batchCategories.forEach(newCat => {
-            if (!newCat || typeof newCat !== 'object') {
-              return;
-            }
-
-            const categoryName = typeof newCat.name === 'string' ? newCat.name : '';
-            const categoryFiles = Array.isArray(newCat.files) ? newCat.files : [];
-            const normalizedCategory = {
-              ...newCat,
-              name: categoryName,
-              files: categoryFiles
-            };
-            const existingCat = allSuggestions.categories.find(c => c.name === categoryName);
-            if (existingCat) {
-              existingCat.files.push(...categoryFiles);
-            } else {
-              allSuggestions.categories.push(normalizedCategory);
-            }
-          });
-        }
-
-        // Add delay between batches to avoid rate limits
-        if (i + BATCH_SIZE < fileNames.length) {
-          await new Promise(resolve => setTimeout(resolve, 1000));
-        }
-      }
-
-      const suggestions = renameFiles
-        ? normalizeRenameSuggestions(allSuggestions, fileNames)
-        : normalizeSortSuggestions(allSuggestions, fileNames, directoryPath);
-
-      if (renameFiles) {
-        if (!suggestions.renames?.length) {
-          return { error: 'No valid rename suggestions received' };
-        }
-
-        // Cache rename suggestions in bulk
-        const renameSuggestions = suggestions.renames.map(rename => ({
-          filePath: path.join(directoryPath, rename.originalName),
-          originalName: rename.originalName,
-          suggestedName: rename.suggestedName,
-          reason: rename.reason
-        }));
-        await db.bulkCacheRenameSuggestions(renameSuggestions);
-
-        return {
-          suggestions: {
-            categories: [{
-              name: "Files to Rename",
-              description: "Files that will be renamed",
-              suggestedPath: ".",
-              files: suggestions.renames.map(r => r.originalName),
-              renames: suggestions.renames
-            }]
-          }
-        };
-      } else {
-        if (!suggestions.categories?.length) {
-          return { error: 'No valid categories received' };
-        }
-
-        // Cache sort suggestions in bulk
-        const sortSuggestions = suggestions.categories.flatMap(category =>
-          category.files.map(file => ({
-            filePath: path.join(directoryPath, file),
-            originalPath: path.join(directoryPath, file),
-            suggestedPath: path.join(category.suggestedPath, file),
-            category: category.name
-          }))
-        );
-        await db.bulkCacheSortSuggestions(sortSuggestions);
-
-        return { suggestions };
-      }
-    } catch (error) {
-      console.error('Failed to analyze directory:', error);
-      return { error: error.message };
-    }
-  }
-
   // Handler for applying suggestions with batch processing
   registerHandler('apply-suggestions', async (event, payload = {}) => {
     try {
@@ -1261,6 +1045,9 @@ if (app) {
 
   // Close database when app quits
   app.on('before-quit', () => {
+    if (global.watchFolderManager) {
+      global.watchFolderManager.shutdown();
+    }
     db.close();
   });
 

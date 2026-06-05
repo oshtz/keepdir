@@ -56,11 +56,30 @@ jest.mock('../RenameDialog', () => {
   };
 });
 
+jest.mock('../WatchedRenameQueue', () => {
+  return function MockWatchedRenameQueue({ open }: { open: boolean; onClose: () => void }) {
+    return open ? <div data-testid="watched-rename-queue">Watched Rename Queue</div> : null;
+  };
+});
+
 jest.mock('../ContextMenu', () => {
   return function MockContextMenu({ open }: { open: boolean; onClose: () => void }) {
     return open ? <div data-testid="context-menu">Context Menu</div> : null;
   };
 });
+
+jest.mock('../../hooks/useWatchedRenameQueue', () => ({
+  useWatchedRenameQueue: jest.fn(() => ({
+    suggestions: [],
+    groupedByFolder: {},
+    loading: false,
+    error: null,
+    load: jest.fn(),
+    dismiss: jest.fn(),
+    refresh: jest.fn(),
+    apply: jest.fn(),
+  })),
+}));
 
 // Mock window.electronAPI
 const mockElectronAPI = {
