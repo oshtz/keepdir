@@ -17,7 +17,7 @@ permissions:
 jobs:
   build-windows:
     # Pin the Windows image so release builds are not changed by windows-latest redirects.
-    runs-on: windows-2025
+    runs-on: windows-2025-vs2026
 
     steps:
       - name: Checkout code
