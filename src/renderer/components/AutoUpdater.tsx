@@ -31,7 +31,7 @@ const AutoUpdater: React.FC = () => {
         const info = await checkNow();
         if (info) {
           // Update is available, start download
-          await downloadNow();
+          await downloadNow(info);
         }
       } catch (err) {
         console.error('Auto-update check failed:', err);
@@ -48,7 +48,10 @@ const AutoUpdater: React.FC = () => {
     }
   }, [status, updateInfo]);
 
-  const handleClose = (_event?: React.SyntheticEvent | Event, reason?: string) => {
+  const handleClose = (
+    _event?: React.SyntheticEvent | Event,
+    reason?: string
+  ) => {
     if (reason === 'clickaway') {
       return;
     }

@@ -95,7 +95,7 @@ keepdir is local-first. Workspaces, settings, history, cache data, and custom si
 - **Drag & Drop**: @dnd-kit (sortable favorites, custom sections)
 - **Image Processing**: Sharp (compression for vision APIs)
 - **Testing**: Jest 30, React Testing Library (70% coverage threshold)
-- **Build**: Webpack 5, Electron Forge 7
+- **Build**: Webpack 5, electron-builder, electron-updater
 
 ## Getting Started
 

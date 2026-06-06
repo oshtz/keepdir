@@ -1,139 +1,22 @@
-const { app } = require('electron');
-const axios = require('axios');
-const crypto = require('crypto');
-const fs = require('fs');
 const path = require('path');
-const { spawn } = require('child_process');
+const { app } = require('electron');
+const { autoUpdater } = require('electron-updater');
 
-// Configuration
-const GITHUB_REPO = 'oshtz/keepdir';
-const UPDATE_DIR_NAME = 'updates';
+const GITHUB_OWNER = 'oshtz';
+const GITHUB_REPO = 'keepdir';
+const PENDING_UPDATE_TOKEN = 'electron-updater-pending-update';
+
+let configured = false;
+let updateWindow = null;
 let lastUpdateInfo = null;
+let downloadedUpdateInfo = null;
 let downloadedUpdatePath = null;
-let downloadedUpdateSha256 = null;
 
-// Platform-specific installer asset patterns
-const ASSET_PATTERNS = {
-  win32: {
-    extension: '.exe',
-    pattern: /^KeepDir-Setup-.*\.exe$/i,
-  },
-  darwin: {
-    extension: '.dmg',
-    pattern: /^KeepDir-.*\.dmg$/i,
-  },
-};
-
-/**
- * Get the updates directory path
- */
-function getUpdateDir() {
-  return path.join(app.getPath('userData'), UPDATE_DIR_NAME);
-}
-
-function getSafeUpdatePath(assetName, version, fallbackExtension) {
-  const updateDir = path.resolve(getUpdateDir());
-  const extension = fallbackExtension || '.bin';
-  const fallbackName = `keepdir-${version}${extension}`;
-  const fileName = path.basename(assetName || fallbackName);
-  const allowedExtensions = new Set(
-    Object.values(ASSET_PATTERNS).map((config) => config.extension)
-  );
-  const fileExtension = path.extname(fileName).toLowerCase();
-
-  if (!fileName || !allowedExtensions.has(fileExtension)) {
-    throw new Error('Update asset must be a supported installer file.');
-  }
-
-  const updatePath = path.resolve(updateDir, fileName);
-  if (path.dirname(updatePath) !== updateDir) {
-    throw new Error('Invalid update asset path.');
-  }
-
-  return updatePath;
-}
-
-function isTrustedDownloadUrl(downloadUrl) {
-  try {
-    const parsed = new URL(downloadUrl);
-    return (
-      parsed.protocol === 'https:' &&
-      parsed.hostname === 'github.com' &&
-      parsed.pathname.startsWith(`/${GITHUB_REPO}/releases/download/`)
-    );
-  } catch {
-    return false;
-  }
-}
-
-function isValidSha256(value) {
-  return typeof value === 'string' && /^[a-f0-9]{64}$/i.test(value.trim());
-}
-
-function parseAssetDigest(digest) {
-  if (typeof digest !== 'string') {
-    return null;
-  }
-
-  const match = digest.trim().match(/^sha256:([a-f0-9]{64})$/i);
-  return match ? match[1].toLowerCase() : null;
-}
-
-function computeFileSha256(filePath) {
-  return new Promise((resolve, reject) => {
-    const hash = crypto.createHash('sha256');
-    const stream = fs.createReadStream(filePath);
-
-    stream.on('data', (chunk) => {
-      hash.update(chunk);
-    });
-    stream.on('error', reject);
-    stream.on('end', () => {
-      resolve(hash.digest('hex'));
-    });
-  });
-}
-
-async function fetchExpectedSha256(updateInfo) {
-  if (!isValidSha256(updateInfo.sha256)) {
-    throw new Error('Trusted update checksum is missing.');
-  }
-
-  return updateInfo.sha256.toLowerCase();
-}
-
-function assertMatchesLastUpdate(updateInfo) {
-  if (!lastUpdateInfo) {
-    throw new Error('Check for updates before downloading.');
-  }
-
-  if (!updateInfo) {
-    return lastUpdateInfo;
-  }
-
-  for (const key of ['version', 'downloadUrl', 'assetName', 'sha256']) {
-    if (updateInfo[key] && updateInfo[key] !== lastUpdateInfo[key]) {
-      throw new Error(
-        'Update details do not match the latest trusted update check.'
-      );
-    }
-  }
-
-  return lastUpdateInfo;
-}
-
-/**
- * Normalize version string (strip 'v' prefix, handle pre-release tags)
- */
 function normalizeVersion(version) {
   if (!version) return '';
-  return version.trim().replace(/^v/i, '').split('-')[0];
+  return String(version).trim().replace(/^v/i, '').split('-')[0];
 }
 
-/**
- * Compare two semantic versions
- * Returns: 1 if left > right, -1 if left < right, 0 if equal
- */
 function compareVersions(left, right) {
   const leftParts = normalizeVersion(left).split('.').map(Number);
   const rightParts = normalizeVersion(right).split('.').map(Number);
@@ -149,337 +32,214 @@ function compareVersions(left, right) {
   return 0;
 }
 
-/**
- * Check for available updates
- * @param {BrowserWindow} _mainWindow - Main window for sending progress events
- * @returns {Promise<{updateInfo?: object, error?: string}>}
- */
-async function checkForUpdate(_mainWindow) {
-  // Don't check for updates in development
+function normalizeReleaseNotes(releaseNotes) {
+  if (typeof releaseNotes === 'string') {
+    return releaseNotes;
+  }
+
+  if (!Array.isArray(releaseNotes)) {
+    return null;
+  }
+
+  const notes = releaseNotes
+    .map((entry) => {
+      if (typeof entry === 'string') {
+        return entry;
+      }
+      if (!entry || typeof entry !== 'object') {
+        return null;
+      }
+      if (typeof entry.note === 'string') {
+        return entry.note;
+      }
+      if (typeof entry.notes === 'string') {
+        return entry.notes;
+      }
+      return null;
+    })
+    .filter(Boolean);
+
+  return notes.length > 0 ? notes.join('\n\n') : null;
+}
+
+function getAssetName(fileUrl) {
+  if (typeof fileUrl !== 'string' || !fileUrl) {
+    return undefined;
+  }
+
+  try {
+    const parsed = new URL(fileUrl);
+    return path.basename(parsed.pathname) || fileUrl;
+  } catch {
+    return path.basename(fileUrl.replace(/\\/g, '/')) || fileUrl;
+  }
+}
+
+function toRendererUpdateInfo(updateInfo) {
+  if (!updateInfo) {
+    return null;
+  }
+
+  const firstFile =
+    Array.isArray(updateInfo.files) && updateInfo.files.length > 0
+      ? updateInfo.files[0]
+      : null;
+  const downloadUrl = firstFile && firstFile.url ? String(firstFile.url) : '';
+
+  return {
+    version: normalizeVersion(updateInfo.version),
+    notes: normalizeReleaseNotes(updateInfo.releaseNotes),
+    publishedAt: updateInfo.releaseDate || null,
+    downloadUrl,
+    assetName: getAssetName(downloadUrl),
+    assetSize:
+      firstFile && typeof firstFile.size === 'number' ? firstFile.size : null,
+  };
+}
+
+function sendDownloadProgress(progress) {
+  if (!updateWindow || updateWindow.isDestroyed()) {
+    return;
+  }
+
+  updateWindow.webContents.send('update-download-progress', {
+    percent: Math.round(progress.percent || 0),
+    downloaded: progress.transferred || 0,
+    total: progress.total || 0,
+  });
+}
+
+function configureAutoUpdater(mainWindow) {
+  if (mainWindow) {
+    updateWindow = mainWindow;
+  }
+
+  if (configured) {
+    return;
+  }
+
+  autoUpdater.autoDownload = false;
+  autoUpdater.autoInstallOnAppQuit = false;
+  autoUpdater.allowPrerelease = false;
+  autoUpdater.setFeedURL({
+    provider: 'github',
+    owner: GITHUB_OWNER,
+    repo: GITHUB_REPO,
+  });
+
+  autoUpdater.on('download-progress', sendDownloadProgress);
+  autoUpdater.on('update-downloaded', (updateInfo) => {
+    downloadedUpdateInfo = toRendererUpdateInfo(updateInfo) || lastUpdateInfo;
+    downloadedUpdatePath = downloadedUpdatePath || PENDING_UPDATE_TOKEN;
+  });
+  autoUpdater.on('error', (error) => {
+    console.error('Auto-updater error:', error.message);
+  });
+
+  configured = true;
+}
+
+function assertMatchesLastUpdate(updateInfo) {
+  if (!lastUpdateInfo) {
+    throw new Error('Check for updates before downloading.');
+  }
+
+  if (!updateInfo) {
+    return lastUpdateInfo;
+  }
+
+  for (const key of ['version', 'downloadUrl', 'assetName']) {
+    if (updateInfo[key] && updateInfo[key] !== lastUpdateInfo[key]) {
+      throw new Error(
+        'Update details do not match the latest trusted update check.'
+      );
+    }
+  }
+
+  return lastUpdateInfo;
+}
+
+async function checkForUpdate(mainWindow) {
   if (!app.isPackaged) {
     return { error: 'Updates are disabled in development mode.' };
   }
 
   try {
+    configureAutoUpdater(mainWindow);
     lastUpdateInfo = null;
+    downloadedUpdateInfo = null;
     downloadedUpdatePath = null;
-    downloadedUpdateSha256 = null;
-    const currentVersion = app.getVersion();
-    const apiUrl = `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`;
 
-    const response = await axios.get(apiUrl, {
-      headers: {
-        Accept: 'application/vnd.github.v3+json',
-        'User-Agent': `keepdir/${currentVersion}`,
-      },
-      timeout: 10000,
-    });
+    const result = await autoUpdater.checkForUpdates();
+    const updateInfo = toRendererUpdateInfo(result && result.updateInfo);
 
-    const release = response.data;
-    const latestVersion = normalizeVersion(release.tag_name || '');
-
-    if (!latestVersion) {
-      return { error: 'Could not determine latest version.' };
+    if (
+      !updateInfo ||
+      !updateInfo.version ||
+      compareVersions(updateInfo.version, app.getVersion()) <= 0
+    ) {
+      return { updateInfo: null };
     }
 
-    // Check if update is available
-    if (compareVersions(latestVersion, currentVersion) <= 0) {
-      return { updateInfo: null }; // Up to date
-    }
-
-    // Find the appropriate asset for this platform
-    const assets = release.assets || [];
-    const platformConfig = ASSET_PATTERNS[process.platform];
-
-    if (!platformConfig) {
-      return { error: `Auto-update is not supported on ${process.platform}.` };
-    }
-
-    let asset = assets.find((a) => platformConfig.pattern.test(a.name || ''));
-
-    if (!asset) {
-      return { error: 'No compatible update asset found for this platform.' };
-    }
-
-    const sha256 = parseAssetDigest(asset.digest);
-    if (!sha256) {
-      return {
-        error: `Release asset SHA-256 digest is missing for ${asset.name}.`,
-      };
-    }
-
-    const updateInfo = {
-      version: latestVersion,
-      notes: release.body || null,
-      publishedAt: release.published_at || null,
-      downloadUrl: asset.browser_download_url,
-      assetName: asset.name,
-      assetSize: asset.size,
-      sha256,
-    };
-
-    if (!isTrustedDownloadUrl(updateInfo.downloadUrl)) {
-      return { error: 'Release asset URL is not trusted.' };
-    }
     lastUpdateInfo = updateInfo;
-    return {
-      updateInfo,
-    };
+    return { updateInfo };
   } catch (error) {
-    if (error.response) {
-      if (error.response.status === 404) {
-        return { error: 'No releases found.' };
-      }
-      if (error.response.status === 403) {
-        return {
-          error: 'GitHub API rate limit exceeded. Please try again later.',
-        };
-      }
-    }
     console.error('Update check failed:', error.message);
     return { error: `Failed to check for updates: ${error.message}` };
   }
 }
 
-/**
- * Download an update
- * @param {object} updateInfo - Update info from checkForUpdate
- * @param {BrowserWindow} mainWindow - Main window for sending progress events
- * @returns {Promise<{updatePath?: string, error?: string}>}
- */
 async function downloadUpdate(updateInfo, mainWindow) {
   if (!app.isPackaged) {
     return { error: 'Updates are disabled in development mode.' };
   }
 
   try {
+    configureAutoUpdater(mainWindow);
     const trustedUpdateInfo = assertMatchesLastUpdate(updateInfo);
-    if (!isTrustedDownloadUrl(trustedUpdateInfo.downloadUrl)) {
-      return { error: 'Release asset URL is not trusted.' };
-    }
+    const downloadedFiles = await autoUpdater.downloadUpdate();
+    const updatePath =
+      Array.isArray(downloadedFiles) && downloadedFiles[0]
+        ? downloadedFiles[0]
+        : PENDING_UPDATE_TOKEN;
 
-    // Create updates directory
-    const updateDir = getUpdateDir();
-    if (!fs.existsSync(updateDir)) {
-      fs.mkdirSync(updateDir, { recursive: true });
-    }
-
-    // Determine filename
-    const platformConfig = ASSET_PATTERNS[process.platform];
-    const updatePath = getSafeUpdatePath(
-      trustedUpdateInfo.assetName,
-      trustedUpdateInfo.version,
-      platformConfig && platformConfig.extension
-    );
-    downloadedUpdatePath = null;
-    downloadedUpdateSha256 = null;
-    const expectedSha256 = await fetchExpectedSha256(trustedUpdateInfo);
-
-    // Download with progress reporting
-    const response = await axios({
-      method: 'get',
-      url: trustedUpdateInfo.downloadUrl,
-      responseType: 'stream',
-      timeout: 300000, // 5 minute timeout for large files
-      headers: {
-        'User-Agent': `keepdir/${app.getVersion()}`,
-      },
-    });
-
-    const totalLength =
-      parseInt(response.headers['content-length'], 10) ||
-      trustedUpdateInfo.assetSize ||
-      0;
-    let downloaded = 0;
-    const hash = crypto.createHash('sha256');
-
-    const writer = fs.createWriteStream(updatePath);
-
-    response.data.on('data', (chunk) => {
-      downloaded += chunk.length;
-      hash.update(chunk);
-      const percent =
-        totalLength > 0 ? Math.round((downloaded / totalLength) * 100) : 0;
-
-      // Send progress to renderer
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('update-download-progress', {
-          percent,
-          downloaded,
-          total: totalLength,
-        });
-      }
-    });
-
-    await new Promise((resolve, reject) => {
-      const rejectAndCleanup = (err) => {
-        try {
-          fs.unlinkSync(updatePath);
-        } catch {
-          // Ignore cleanup errors
-        }
-        reject(err);
-      };
-
-      writer.on('finish', () => {
-        if (
-          trustedUpdateInfo.assetSize &&
-          downloaded !== trustedUpdateInfo.assetSize
-        ) {
-          rejectAndCleanup(
-            new Error(
-              'Downloaded update size did not match the release asset size.'
-            )
-          );
-          return;
-        }
-
-        const actualSha256 = hash.digest('hex');
-        if (actualSha256 !== expectedSha256) {
-          rejectAndCleanup(
-            new Error(
-              'Downloaded update checksum did not match the release checksum.'
-            )
-          );
-          return;
-        }
-        resolve();
-      });
-
-      writer.on('error', rejectAndCleanup);
-      response.data.on('error', rejectAndCleanup);
-
-      response.data.pipe(writer);
-    });
-
+    downloadedUpdateInfo = trustedUpdateInfo;
     downloadedUpdatePath = updatePath;
-    downloadedUpdateSha256 = expectedSha256;
     return { updatePath };
   } catch (error) {
     console.error('Download failed:', error.message);
-    return { error: `Failed to download update: ${error.message}` };
+    return { error: error.message };
   }
 }
 
-/**
- * Apply an update (Windows)
- * @param {string} updatePath - Path to downloaded update file
- * @returns {Promise<{success?: boolean, error?: string}>}
- */
-async function installUpdate(updatePath) {
+async function installUpdate(_updatePath) {
   if (!app.isPackaged) {
     return { error: 'Updates are disabled in development mode.' };
   }
 
   try {
-    if (!downloadedUpdatePath) {
-      return { error: 'Download the trusted update before installing.' };
-    }
-    if (!downloadedUpdateSha256) {
-      return {
-        error: 'Trusted update checksum is missing. Download the update again.',
-      };
+    if (!downloadedUpdateInfo && !downloadedUpdatePath) {
+      return { error: 'Download the update before installing.' };
     }
 
-    const updateDir = path.resolve(getUpdateDir());
-    const resolvedUpdatePath = path.resolve(updatePath || '');
-    const expectedUpdatePath = path.resolve(downloadedUpdatePath);
-
-    if (
-      resolvedUpdatePath !== expectedUpdatePath ||
-      path.dirname(resolvedUpdatePath) !== updateDir
-    ) {
-      return { error: 'Update file does not match the trusted download.' };
-    }
-
-    if (!fs.existsSync(resolvedUpdatePath)) {
-      return { error: 'Update file not found.' };
-    }
-
-    const updateStats = fs.lstatSync(resolvedUpdatePath);
-    if (updateStats.isSymbolicLink() || !updateStats.isFile()) {
-      return { error: 'Update file must be a regular file.' };
-    }
-
-    const currentSha256 = await computeFileSha256(resolvedUpdatePath);
-    if (currentSha256 !== downloadedUpdateSha256) {
-      return {
-        error: 'Update file checksum no longer matches the trusted download.',
-      };
-    }
-
-    const pid = process.pid;
-
-    if (process.platform === 'win32') {
-      // Windows: wait for this process to exit, then open the verified installer.
-      const script = `
-        $ErrorActionPreference = 'Stop'
-        $procId = ${pid}
-        $installerPath = '${resolvedUpdatePath.replace(/'/g, "''")}'
-
-        while (Get-Process -Id $procId -ErrorAction SilentlyContinue) {
-            Start-Sleep -Milliseconds 200
-        }
-
-        Start-Process -FilePath $installerPath
-      `;
-
-      spawn(
-        'powershell',
-        ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', script],
-        {
-          detached: true,
-          stdio: 'ignore',
-          windowsHide: true,
-        }
-      ).unref();
-
-      // Exit the app
-      setTimeout(() => {
-        app.exit(0);
-      }, 500);
-
-      return { success: true };
-    } else if (process.platform === 'darwin') {
-      spawn('open', [resolvedUpdatePath], {
-        detached: true,
-        stdio: 'ignore',
-      }).unref();
-
-      setTimeout(() => {
-        app.exit(0);
-      }, 500);
-
-      return { success: true };
-    } else {
-      return { error: 'Auto-update is not supported on this platform.' };
-    }
+    autoUpdater.quitAndInstall(false, true);
+    return { success: true };
   } catch (error) {
     console.error('Install failed:', error.message);
     return { error: `Failed to install update: ${error.message}` };
   }
 }
 
-/**
- * Clean up old update files
- */
 function cleanupUpdates() {
-  try {
-    const updateDir = getUpdateDir();
-    if (fs.existsSync(updateDir)) {
-      const files = fs.readdirSync(updateDir);
-      for (const file of files) {
-        const filePath = path.join(updateDir, file);
-        try {
-          fs.unlinkSync(filePath);
-        } catch {
-          // Ignore errors
-        }
-      }
-    }
-  } catch (error) {
-    console.error('Cleanup failed:', error.message);
-  }
+  // electron-updater owns its update cache and cleans pending updates itself.
+}
+
+function _resetForTests() {
+  configured = false;
+  updateWindow = null;
+  lastUpdateInfo = null;
+  downloadedUpdateInfo = null;
+  downloadedUpdatePath = null;
 }
 
 module.exports = {
@@ -489,5 +249,5 @@ module.exports = {
   cleanupUpdates,
   compareVersions,
   normalizeVersion,
-  parseAssetDigest,
+  _resetForTests,
 };

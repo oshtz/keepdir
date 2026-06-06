@@ -26,6 +26,7 @@ const UpdateStatus: React.FC<UpdateStatusProps> = ({ darkMode }) => {
     currentVersion,
     status,
     updateInfo,
+    updatePath,
     downloadProgress,
     error,
     lastCheckedAt,
@@ -37,6 +38,13 @@ const UpdateStatus: React.FC<UpdateStatusProps> = ({ darkMode }) => {
 
   const [showNotes, setShowNotes] = React.useState(false);
 
+  const handleUpdateAndRestart = async () => {
+    const targetUpdatePath = updatePath || (await downloadNow());
+    if (targetUpdatePath) {
+      await installNow(targetUpdatePath);
+    }
+  };
+
   const formatLastChecked = () => {
     if (!lastCheckedAt) return 'Never';
     const date = new Date(lastCheckedAt);
@@ -45,10 +53,12 @@ const UpdateStatus: React.FC<UpdateStatusProps> = ({ darkMode }) => {
     const diffMins = Math.floor(diffMs / 60000);
 
     if (diffMins < 1) return 'Just now';
-    if (diffMins < 60) return `${diffMins} minute${diffMins > 1 ? 's' : ''} ago`;
+    if (diffMins < 60)
+      return `${diffMins} minute${diffMins > 1 ? 's' : ''} ago`;
 
     const diffHours = Math.floor(diffMins / 60);
-    if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
+    if (diffHours < 24)
+      return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
 
     return date.toLocaleDateString();
   };
@@ -56,17 +66,59 @@ const UpdateStatus: React.FC<UpdateStatusProps> = ({ darkMode }) => {
   const getStatusChip = () => {
     switch (status) {
       case 'checking':
-        return <Chip label="Checking..." size="small" color="info" icon={<CircularProgress size={14} />} />;
+        return (
+          <Chip
+            label="Checking..."
+            size="small"
+            color="info"
+            icon={<CircularProgress size={14} />}
+          />
+        );
       case 'available':
-        return <Chip label="Update Available" size="small" color="warning" icon={<NewReleasesIcon />} />;
+        return (
+          <Chip
+            label="Update Available"
+            size="small"
+            color="warning"
+            icon={<NewReleasesIcon />}
+          />
+        );
       case 'downloading':
-        return <Chip label="Downloading..." size="small" color="info" icon={<DownloadIcon />} />;
+        return (
+          <Chip
+            label="Downloading..."
+            size="small"
+            color="info"
+            icon={<DownloadIcon />}
+          />
+        );
       case 'ready':
-        return <Chip label="Ready to Install" size="small" color="success" icon={<CheckCircleIcon />} />;
+        return (
+          <Chip
+            label="Ready to Install"
+            size="small"
+            color="success"
+            icon={<CheckCircleIcon />}
+          />
+        );
       case 'installing':
-        return <Chip label="Installing..." size="small" color="info" icon={<CircularProgress size={14} />} />;
+        return (
+          <Chip
+            label="Installing..."
+            size="small"
+            color="info"
+            icon={<CircularProgress size={14} />}
+          />
+        );
       case 'up-to-date':
-        return <Chip label="Up to Date" size="small" color="success" icon={<CheckCircleIcon />} />;
+        return (
+          <Chip
+            label="Up to Date"
+            size="small"
+            color="success"
+            icon={<CheckCircleIcon />}
+          />
+        );
       case 'error':
         return <Chip label="Error" size="small" color="error" />;
       default:
@@ -94,10 +146,10 @@ const UpdateStatus: React.FC<UpdateStatusProps> = ({ darkMode }) => {
           <Button
             variant="contained"
             size="small"
-            startIcon={<DownloadIcon />}
-            onClick={downloadNow}
+            startIcon={<RestartAltIcon />}
+            onClick={handleUpdateAndRestart}
           >
-            Download Update
+            Update & Restart
           </Button>
         );
       case 'ready':
@@ -107,9 +159,9 @@ const UpdateStatus: React.FC<UpdateStatusProps> = ({ darkMode }) => {
             size="small"
             color="success"
             startIcon={<RestartAltIcon />}
-            onClick={installNow}
+            onClick={() => installNow(updatePath || undefined)}
           >
-            Install & Restart
+            Restart & Update
           </Button>
         );
       case 'checking':
@@ -152,7 +204,14 @@ const UpdateStatus: React.FC<UpdateStatusProps> = ({ darkMode }) => {
       {/* Download Progress */}
       {status === 'downloading' && (
         <Box sx={{ mb: 2 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
+          <Box
+            sx={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              mb: 0.5,
+            }}
+          >
             <Typography variant="body2" color="text.secondary">
               Downloading update...
             </Typography>
@@ -166,77 +225,97 @@ const UpdateStatus: React.FC<UpdateStatusProps> = ({ darkMode }) => {
 
       {/* Error Alert */}
       {error && (
-        <Alert
-          severity="error"
-          onClose={clearError}
-          sx={{ mb: 2 }}
-        >
+        <Alert severity="error" onClose={clearError} sx={{ mb: 2 }}>
           {error}
         </Alert>
       )}
 
       {/* Update Info */}
-      {updateInfo && (status === 'available' || status === 'ready' || status === 'downloading') && (
-        <Box
-          sx={{
-            p: 2,
-            mb: 2,
-            borderRadius: 1,
-            backgroundColor: darkMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.02)',
-            border: '1px solid',
-            borderColor: darkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)',
-          }}
-        >
-          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <Typography variant="subtitle2">
-              Version {updateInfo.version} Available
-            </Typography>
-            {updateInfo.notes && (
-              <IconButton size="small" onClick={() => setShowNotes(!showNotes)}>
-                {showNotes ? <ExpandLessIcon /> : <ExpandMoreIcon />}
-              </IconButton>
+      {updateInfo &&
+        (status === 'available' ||
+          status === 'ready' ||
+          status === 'downloading') && (
+          <Box
+            sx={{
+              p: 2,
+              mb: 2,
+              borderRadius: 1,
+              backgroundColor: darkMode
+                ? 'rgba(255,255,255,0.05)'
+                : 'rgba(0,0,0,0.02)',
+              border: '1px solid',
+              borderColor: darkMode
+                ? 'rgba(255,255,255,0.1)'
+                : 'rgba(0,0,0,0.08)',
+            }}
+          >
+            <Box
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+              }}
+            >
+              <Typography variant="subtitle2">
+                Version {updateInfo.version} Available
+              </Typography>
+              {updateInfo.notes && (
+                <IconButton
+                  size="small"
+                  onClick={() => setShowNotes(!showNotes)}
+                >
+                  {showNotes ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+                </IconButton>
+              )}
+            </Box>
+
+            {updateInfo.publishedAt && (
+              <Typography variant="caption" color="text.secondary">
+                Released {new Date(updateInfo.publishedAt).toLocaleDateString()}
+              </Typography>
             )}
-          </Box>
 
-          {updateInfo.publishedAt && (
-            <Typography variant="caption" color="text.secondary">
-              Released {new Date(updateInfo.publishedAt).toLocaleDateString()}
-            </Typography>
-          )}
-
-          {/* Release Notes */}
-          <Collapse in={showNotes}>
-            {updateInfo.notes && (
-              <Box
-                sx={{
-                  mt: 1,
-                  p: 1,
-                  borderRadius: 1,
-                  backgroundColor: darkMode ? 'rgba(0,0,0,0.2)' : 'rgba(0,0,0,0.04)',
-                  maxHeight: 200,
-                  overflow: 'auto',
-                }}
-              >
-                <Typography
-                  variant="body2"
-                  component="pre"
+            {/* Release Notes */}
+            <Collapse in={showNotes}>
+              {updateInfo.notes && (
+                <Box
                   sx={{
-                    whiteSpace: 'pre-wrap',
-                    fontFamily: 'inherit',
-                    m: 0,
-                    fontSize: '0.8rem',
+                    mt: 1,
+                    p: 1,
+                    borderRadius: 1,
+                    backgroundColor: darkMode
+                      ? 'rgba(0,0,0,0.2)'
+                      : 'rgba(0,0,0,0.04)',
+                    maxHeight: 200,
+                    overflow: 'auto',
                   }}
                 >
-                  {updateInfo.notes}
-                </Typography>
-              </Box>
-            )}
-          </Collapse>
-        </Box>
-      )}
+                  <Typography
+                    variant="body2"
+                    component="pre"
+                    sx={{
+                      whiteSpace: 'pre-wrap',
+                      fontFamily: 'inherit',
+                      m: 0,
+                      fontSize: '0.8rem',
+                    }}
+                  >
+                    {updateInfo.notes}
+                  </Typography>
+                </Box>
+              )}
+            </Collapse>
+          </Box>
+        )}
 
       {/* Action Button */}
-      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <Box
+        sx={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+        }}
+      >
         {getActionButton()}
         <Typography variant="caption" color="text.secondary">
           Last checked: {formatLastChecked()}

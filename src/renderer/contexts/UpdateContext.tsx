@@ -1,4 +1,10 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useCallback,
+} from 'react';
 import { UpdateInfo, UpdateDownloadProgress } from '../electron.d';
 
 export type UpdateStatus =
@@ -23,14 +29,16 @@ interface UpdateState {
 
 interface UpdateContextType extends UpdateState {
   checkNow: () => Promise<UpdateInfo | null>;
-  downloadNow: () => Promise<string | null>;
-  installNow: () => Promise<void>;
+  downloadNow: (updateInfoOverride?: UpdateInfo) => Promise<string | null>;
+  installNow: (updatePathOverride?: string) => Promise<void>;
   clearError: () => void;
 }
 
 const UpdateContext = createContext<UpdateContextType | undefined>(undefined);
 
-export const UpdateProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+export const UpdateProvider: React.FC<{ children: React.ReactNode }> = ({
+  children,
+}) => {
   const [currentVersion, setCurrentVersion] = useState<string | null>(null);
   const [status, setStatus] = useState<UpdateStatus>('idle');
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
@@ -54,9 +62,11 @@ export const UpdateProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   // Subscribe to download progress events
   useEffect(() => {
-    const unsubscribe = window.electronAPI.onUpdateDownloadProgress((progress: UpdateDownloadProgress) => {
-      setDownloadProgress(progress.percent);
-    });
+    const unsubscribe = window.electronAPI.onUpdateDownloadProgress(
+      (progress: UpdateDownloadProgress) => {
+        setDownloadProgress(progress.percent);
+      }
+    );
     return unsubscribe;
   }, []);
 
@@ -83,74 +93,88 @@ export const UpdateProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       setStatus('up-to-date');
       return null;
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Unknown error occurred';
+      const errorMessage =
+        err instanceof Error ? err.message : 'Unknown error occurred';
       setStatus('error');
       setError(errorMessage);
       return null;
     }
   }, []);
 
-  const downloadNow = useCallback(async (): Promise<string | null> => {
-    if (!updateInfo) {
-      setError('No update available to download.');
-      return null;
-    }
+  const downloadNow = useCallback(
+    async (updateInfoOverride?: UpdateInfo): Promise<string | null> => {
+      const targetUpdateInfo = updateInfoOverride || updateInfo;
 
-    setStatus('downloading');
-    setDownloadProgress(0);
-    setError(null);
-
-    try {
-      const result = await window.electronAPI.downloadUpdate(updateInfo);
-
-      if (result.error) {
-        setStatus('error');
-        setError(result.error);
+      if (!targetUpdateInfo) {
+        setError('No update available to download.');
         return null;
       }
 
-      if (result.updatePath) {
-        setUpdatePath(result.updatePath);
-        setStatus('ready');
-        return result.updatePath;
-      }
+      setStatus('downloading');
+      setDownloadProgress(0);
+      setError(null);
 
-      setStatus('error');
-      setError('Download failed - no update path returned.');
-      return null;
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Unknown error occurred';
-      setStatus('error');
-      setError(errorMessage);
-      return null;
-    }
-  }, [updateInfo]);
+      try {
+        const result =
+          await window.electronAPI.downloadUpdate(targetUpdateInfo);
 
-  const installNow = useCallback(async (): Promise<void> => {
-    if (!updatePath) {
-      setError('No update downloaded to install.');
-      return;
-    }
+        if (result.error) {
+          setStatus('error');
+          setError(result.error);
+          return null;
+        }
 
-    setStatus('installing');
-    setError(null);
+        if (result.updatePath) {
+          setUpdatePath(result.updatePath);
+          setStatus('ready');
+          return result.updatePath;
+        }
 
-    try {
-      const result = await window.electronAPI.installUpdate(updatePath);
-
-      if (result.error) {
         setStatus('error');
-        setError(result.error);
+        setError('Download failed - no update path returned.');
+        return null;
+      } catch (err) {
+        const errorMessage =
+          err instanceof Error ? err.message : 'Unknown error occurred';
+        setStatus('error');
+        setError(errorMessage);
+        return null;
+      }
+    },
+    [updateInfo]
+  );
+
+  const installNow = useCallback(
+    async (updatePathOverride?: string): Promise<void> => {
+      const targetUpdatePath = updatePathOverride || updatePath;
+
+      if (!targetUpdatePath) {
+        setError('No update downloaded to install.');
         return;
       }
 
-      // If successful, the app will restart - this code may not execute
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Unknown error occurred';
-      setStatus('error');
-      setError(errorMessage);
-    }
-  }, [updatePath]);
+      setStatus('installing');
+      setError(null);
+
+      try {
+        const result = await window.electronAPI.installUpdate(targetUpdatePath);
+
+        if (result.error) {
+          setStatus('error');
+          setError(result.error);
+          return;
+        }
+
+        // If successful, the app will restart - this code may not execute
+      } catch (err) {
+        const errorMessage =
+          err instanceof Error ? err.message : 'Unknown error occurred';
+        setStatus('error');
+        setError(errorMessage);
+      }
+    },
+    [updatePath]
+  );
 
   const clearError = useCallback(() => {
     setError(null);

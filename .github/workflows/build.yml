@@ -43,24 +43,39 @@ jobs:
       - name: Build Windows installer
         shell: pwsh
         run: |
-          npm run make -- --platform win32
+          npm run dist:win
           if ($LASTEXITCODE -ne 0) {
             exit $LASTEXITCODE
           }
 
-          $installer = Get-ChildItem -Path "out\make" -Filter "KeepDir-Setup-*.exe" -File -Recurse | Select-Object -First 1
+          $installer = Get-ChildItem -Path "out" -Filter "KeepDir-Setup-*.exe" -File -Recurse | Select-Object -First 1
           if (-not $installer) {
-            throw "Windows installer was not created in out/make"
+            throw "Windows installer was not created in out"
+          }
+
+          $latest = Get-ChildItem -Path "out" -Filter "latest.yml" -File -Recurse | Select-Object -First 1
+          if (-not $latest) {
+            throw "Windows updater metadata latest.yml was not created in out"
+          }
+
+          $blockmap = Get-ChildItem -Path "out" -Filter "*.exe.blockmap" -File -Recurse | Select-Object -First 1
+          if (-not $blockmap) {
+            throw "Windows updater blockmap was not created in out"
           }
 
           $size = [math]::Round($installer.Length / 1MB, 2)
           Write-Host "Windows installer created: $($installer.FullName) ($size MB)"
+          Write-Host "Windows updater metadata created: $($latest.FullName)"
+          Write-Host "Windows updater blockmap created: $($blockmap.FullName)"
 
-      - name: Upload Windows installer
+      - name: Upload Windows installer and updater metadata
         uses: actions/upload-artifact@v7
         with:
-          name: keepdir-windows-installer
-          path: out/make/**/KeepDir-Setup-*.exe
+          name: keepdir-windows-update-bundle
+          path: |
+            out/KeepDir-Setup-*.exe
+            out/latest.yml
+            out/*.exe.blockmap
 
   build-macos:
     # Pin the macOS ARM image so release builds are not changed by macos-latest redirects.
@@ -124,9 +139,9 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           if [ -n "$APPLE_SIGNING_IDENTITY" ]; then
-            export OSX_SIGN_IDENTITY="$APPLE_SIGNING_IDENTITY"
+            export CSC_NAME="$APPLE_SIGNING_IDENTITY"
           fi
-          npm run make -- --platform darwin
+          npm run dist:mac
 
       - name: Notarize macOS app
         if: github.ref == 'refs/heads/main'
@@ -140,7 +155,7 @@ jobs:
             exit 0
           fi
 
-          DMG_FILE=$(find out/make -name "*.dmg" -type f | head -1)
+          DMG_FILE=$(find out -name "*.dmg" -type f | head -1)
           if [ -z "$DMG_FILE" ]; then
             echo "::warning::No DMG file found for notarization"
             exit 0
@@ -161,11 +176,14 @@ jobs:
 
           echo "Notarization completed"
 
-      - name: Upload macOS DMG
+      - name: Upload macOS DMG and updater metadata
         uses: actions/upload-artifact@v7
         with:
-          name: keepdir-macos-dmg
-          path: out/make/**/*.dmg
+          name: keepdir-macos-update-bundle
+          path: |
+            out/*.dmg
+            out/latest-mac.yml
+            out/*.dmg.blockmap
 
       - name: Cleanup keychain
         if: always()
@@ -205,7 +223,8 @@ jobs:
         run: |
           set -euo pipefail
           mapfile -t installers < <(find release-artifacts -type f \( -name "*.exe" -o -name "*.dmg" \) | sort)
-          mapfile -t unexpected < <(find release-artifacts -type f ! \( -name "*.exe" -o -name "*.dmg" \) | sort)
+          mapfile -t updater_metadata < <(find release-artifacts -type f \( -name "*.yml" -o -name "*.blockmap" \) | sort)
+          mapfile -t unexpected < <(find release-artifacts -type f ! \( -name "*.exe" -o -name "*.dmg" -o -name "*.yml" -o -name "*.blockmap" \) | sort)
 
           if [ "${#unexpected[@]}" -ne 0 ]; then
             printf 'Unexpected release artifact: %s\n' "${unexpected[@]}"
@@ -226,7 +245,18 @@ jobs:
             exit 1
           fi
 
+          latest_count=$(printf '%s\n' "${updater_metadata[@]}" | grep -Ec '/latest\.yml$' || true)
+          latest_mac_count=$(printf '%s\n' "${updater_metadata[@]}" | grep -Ec '/latest-mac\.yml$' || true)
+          exe_blockmap_count=$(printf '%s\n' "${updater_metadata[@]}" | grep -Ec '\.exe\.blockmap$' || true)
+          dmg_blockmap_count=$(printf '%s\n' "${updater_metadata[@]}" | grep -Ec '\.dmg\.blockmap$' || true)
+          if [ "$latest_count" -ne 1 ] || [ "$latest_mac_count" -ne 1 ] || [ "$exe_blockmap_count" -ne 1 ] || [ "$dmg_blockmap_count" -ne 1 ]; then
+            echo "Expected updater metadata: latest.yml, latest-mac.yml, one EXE blockmap, and one DMG blockmap"
+            printf 'Updater metadata candidate: %s\n' "${updater_metadata[@]}"
+            exit 1
+          fi
+
           sha256sum "${installers[@]}"
+          sha256sum "${updater_metadata[@]}"
 
       - name: Check for existing release
         id: release_check

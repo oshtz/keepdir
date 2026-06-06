@@ -8,7 +8,7 @@ const Database = require('./database');
 const updater = require('./updater');
 const {
   applyRenameSuggestions,
-  applySortSuggestions
+  applySortSuggestions,
 } = require('./fileOperations');
 const { createAnalysisService } = require('./analysisService');
 const { getProvider } = require('./providers');
@@ -18,13 +18,13 @@ const {
   normalizeOllamaModelName,
   normalizeProviderName,
   requireExistingDirectoryPath,
-  requireExistingFileOrDirectoryPath
+  requireExistingFileOrDirectoryPath,
 } = require('./ipcValidation');
 const {
   normalizeImportOptions,
   readJsonImportFile,
   validateAllDataImport,
-  validateWorkspaceImportData
+  validateWorkspaceImportData,
 } = require('./importValidation');
 const {
   normalizeCustomSectionData,
@@ -34,18 +34,13 @@ const {
   normalizeSettingsPayload,
   normalizeWorkspace,
   normalizeWorkspaceId,
-  normalizeWorkspaceSettingRequest
+  normalizeWorkspaceSettingRequest,
 } = require('./stateValidation');
 const {
   normalizeWatchFolder,
   normalizeWatchedSuggestionIds,
-  toWatchedRenameSuggestionsPayload
+  toWatchedRenameSuggestionsPayload,
 } = require('./watchFolderValidation');
-
-// Handle creating/removing shortcuts on Windows when installing/uninstalling.
-if (require('electron-squirrel-startup')) {
-  app.quit();
-}
 
 const isDev = process.env.NODE_ENV === 'development';
 const isVerboseLogging = isDev || process.env.KEEPDIR_DEBUG === '1';
@@ -134,13 +129,13 @@ registerHandler('get-provider-models', async (_event, providerName) => {
       google: 'Google',
       ollama: 'Ollama',
       openrouter: 'OpenRouter',
-      lmstudio: 'LM Studio'
+      lmstudio: 'LM Studio',
     };
 
     if (!['ollama', 'lmstudio'].includes(normalizedProviderName) && !apiKey) {
       return {
         error: `Please configure your ${displayNames[normalizedProviderName] || normalizedProviderName} API key in settings`,
-        defaultModel
+        defaultModel,
       };
     }
 
@@ -166,7 +161,7 @@ function createWindow() {
       nodeIntegration: false,
       contextIsolation: true,
       preload: path.join(__dirname, 'preload.js'),
-      webSecurity: true
+      webSecurity: true,
     },
   });
 
@@ -176,7 +171,7 @@ function createWindow() {
   if (isDev) {
     const loadUrl = 'http://localhost:8081';
     debugLog('Loading from dev server:', loadUrl);
-    mainWindow.loadURL(loadUrl).catch(err => {
+    mainWindow.loadURL(loadUrl).catch((err) => {
       console.error('Failed to load URL:', err);
     });
     if (process.env.KEEPDIR_E2E !== '1') {
@@ -185,7 +180,7 @@ function createWindow() {
   } else {
     const filePath = path.join(__dirname, '../../dist/index.html');
     debugLog('Loading from file:', filePath);
-    mainWindow.loadFile(filePath).catch(err => {
+    mainWindow.loadFile(filePath).catch((err) => {
       console.error('Failed to load file:', err);
     });
   }
@@ -214,12 +209,17 @@ function createWindow() {
   });
 
   registerHandler('select-directory', async () => {
-    if (process.env.KEEPDIR_E2E === '1' && process.env.KEEPDIR_E2E_SELECT_DIRECTORY) {
-      return requireExistingDirectoryPath(process.env.KEEPDIR_E2E_SELECT_DIRECTORY);
+    if (
+      process.env.KEEPDIR_E2E === '1' &&
+      process.env.KEEPDIR_E2E_SELECT_DIRECTORY
+    ) {
+      return requireExistingDirectoryPath(
+        process.env.KEEPDIR_E2E_SELECT_DIRECTORY
+      );
     }
 
     const result = await dialog.showOpenDialog(mainWindow, {
-      properties: ['openDirectory']
+      properties: ['openDirectory'],
     });
     if (!result.canceled) {
       return result.filePaths[0];
@@ -230,7 +230,10 @@ function createWindow() {
   // Handler for opening files with system default application
   registerHandler('open-file', async (event, filePath) => {
     try {
-      const safeFilePath = await requireExistingFileOrDirectoryPath(filePath, 'File path');
+      const safeFilePath = await requireExistingFileOrDirectoryPath(
+        filePath,
+        'File path'
+      );
       const openError = await shell.openPath(safeFilePath);
       if (openError) {
         return { error: openError };
@@ -245,7 +248,10 @@ function createWindow() {
   // Reveal item in OS file explorer
   registerHandler('reveal-in-folder', async (_event, filePath) => {
     try {
-      const safeFilePath = await requireExistingFileOrDirectoryPath(filePath, 'File path');
+      const safeFilePath = await requireExistingFileOrDirectoryPath(
+        filePath,
+        'File path'
+      );
       shell.showItemInFolder(safeFilePath);
       return { success: true };
     } catch (error) {
@@ -256,20 +262,25 @@ function createWindow() {
 
   registerHandler('load-directory', async (event, directoryPath) => {
     try {
-      const safeDirectoryPath = await requireExistingDirectoryPath(directoryPath);
+      const safeDirectoryPath =
+        await requireExistingDirectoryPath(directoryPath);
       debugLog(`Loading directory: ${safeDirectoryPath}`);
-      const items = await fs.readdir(safeDirectoryPath, { withFileTypes: true });
-      const files = await Promise.all(items.map(async (item) => {
-        const fullPath = path.join(safeDirectoryPath, item.name);
-        const stats = await fs.lstat(fullPath);
-        return {
-          name: item.name,
-          path: fullPath,
-          isDirectory: item.isDirectory(),
-          size: stats.size,
-          modified: stats.mtime
-        };
-      }));
+      const items = await fs.readdir(safeDirectoryPath, {
+        withFileTypes: true,
+      });
+      const files = await Promise.all(
+        items.map(async (item) => {
+          const fullPath = path.join(safeDirectoryPath, item.name);
+          const stats = await fs.lstat(fullPath);
+          return {
+            name: item.name,
+            path: fullPath,
+            isDirectory: item.isDirectory(),
+            size: stats.size,
+            modified: stats.mtime,
+          };
+        })
+      );
       return { files };
     } catch (error) {
       console.error('Failed to load directory:', error);
@@ -278,9 +289,12 @@ function createWindow() {
   });
 
   // Log any load failures
-  mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
-    console.error('Failed to load:', errorCode, errorDescription);
-  });
+  mainWindow.webContents.on(
+    'did-fail-load',
+    (event, errorCode, errorDescription) => {
+      console.error('Failed to load:', errorCode, errorDescription);
+    }
+  );
 
   // Log any crashes
   mainWindow.webContents.on('crashed', () => {
@@ -302,7 +316,7 @@ function createWindow() {
           const progress = parseInt(progressMatch[1]);
           event.sender.send('ollama-model-pull-progress', {
             progress,
-            status: output.trim()
+            status: output.trim(),
           });
         }
       });
@@ -328,10 +342,10 @@ function createWindow() {
   registerHandler('list-ollama-models', async () => {
     try {
       const response = await axios.get('http://localhost:11434/api/tags', {
-        timeout: 2000
+        timeout: 2000,
       });
       const models = (response.data?.models || []).map((model) => ({
-        name: model.name
+        name: model.name,
       }));
       return { models };
     } catch (error) {
@@ -361,7 +375,7 @@ function createWindow() {
           resolve({ success: true });
         } else {
           resolve({
-            error: `Failed to delete model: ${error || `exit code ${code}`}`
+            error: `Failed to delete model: ${error || `exit code ${code}`}`,
           });
         }
       });
@@ -382,8 +396,8 @@ function createWindow() {
     getProvider,
     logger: {
       debug: debugLog,
-      error: console.error
-    }
+      error: console.error,
+    },
   });
   const notifyRenderer = (channel, payload) => {
     if (!mainWindow.isDestroyed()) {
@@ -394,7 +408,7 @@ function createWindow() {
     db,
     analysisService,
     notify: notifyRenderer,
-    createId: () => randomUUID()
+    createId: () => randomUUID(),
   });
   if (global.watchFolderManager) {
     global.watchFolderManager.shutdown();
@@ -459,9 +473,12 @@ function createWindow() {
 
   registerHandler('save-workspace-setting', async (event, payload = {}) => {
     try {
-      const { workspaceId, key, value } = normalizeWorkspaceSettingRequest(payload, {
-        requireValue: true
-      });
+      const { workspaceId, key, value } = normalizeWorkspaceSettingRequest(
+        payload,
+        {
+          requireValue: true,
+        }
+      );
       await db.saveWorkspaceSetting(workspaceId, key, value);
       return { success: true };
     } catch (error) {
@@ -472,7 +489,9 @@ function createWindow() {
 
   registerHandler('set-active-watch-workspace', async (_event, workspaceId) => {
     try {
-      const normalizedWorkspaceId = workspaceId ? normalizeWorkspaceId(workspaceId) : null;
+      const normalizedWorkspaceId = workspaceId
+        ? normalizeWorkspaceId(workspaceId)
+        : null;
       await watchFolderManager.setActiveWorkspace(normalizedWorkspaceId);
       return { success: true };
     } catch (error) {
@@ -486,7 +505,7 @@ function createWindow() {
       const normalizedWorkspaceId = normalizeWorkspaceId(workspaceId);
       return {
         success: true,
-        folders: await db.getWatchFolders(normalizedWorkspaceId)
+        folders: await db.getWatchFolders(normalizedWorkspaceId),
       };
     } catch (error) {
       return { error: error.message };
@@ -497,108 +516,176 @@ function createWindow() {
     try {
       const normalizedWorkspaceId = normalizeWorkspaceId(workspaceId);
       const normalizedFolder = normalizeWatchFolder(folder);
-      const result = await db.saveWatchFolder(normalizedWorkspaceId, normalizedFolder);
+      const result = await db.saveWatchFolder(
+        normalizedWorkspaceId,
+        normalizedFolder
+      );
       await watchFolderManager.reloadWatchers();
-      notifyRenderer('watch-folders-changed', { workspaceId: normalizedWorkspaceId });
+      notifyRenderer('watch-folders-changed', {
+        workspaceId: normalizedWorkspaceId,
+      });
       return result;
     } catch (error) {
       return { error: error.message };
     }
   });
 
-  registerHandler('remove-watch-folder', async (_event, workspaceId, folderId) => {
-    try {
-      const normalizedWorkspaceId = normalizeWorkspaceId(workspaceId);
-      const result = await db.removeWatchFolder(normalizedWorkspaceId, folderId);
-      await watchFolderManager.reloadWatchers();
-      notifyRenderer('watch-folders-changed', { workspaceId: normalizedWorkspaceId });
-      return result;
-    } catch (error) {
-      return { error: error.message };
-    }
-  });
-
-  registerHandler('set-watch-folder-enabled', async (_event, workspaceId, folderId, enabled) => {
-    try {
-      const normalizedWorkspaceId = normalizeWorkspaceId(workspaceId);
-      const result = await db.setWatchFolderEnabled(normalizedWorkspaceId, folderId, enabled === true);
-      await watchFolderManager.reloadWatchers();
-      notifyRenderer('watch-folders-changed', { workspaceId: normalizedWorkspaceId });
-      return result;
-    } catch (error) {
-      return { error: error.message };
-    }
-  });
-
-  registerHandler('get-watched-rename-suggestions', async (_event, workspaceId) => {
-    try {
-      const normalizedWorkspaceId = normalizeWorkspaceId(workspaceId);
-      const rows = await db.getWatchedRenameSuggestions(normalizedWorkspaceId);
-      return {
-        success: true,
-        suggestions: toWatchedRenameSuggestionsPayload(rows)
-      };
-    } catch (error) {
-      return { error: error.message };
-    }
-  });
-
-  registerHandler('dismiss-watched-rename-suggestions', async (_event, workspaceId, suggestionIds) => {
-    try {
-      const normalizedWorkspaceId = normalizeWorkspaceId(workspaceId);
-      const ids = normalizeWatchedSuggestionIds(suggestionIds);
-      await Promise.all(ids.map((id) => (
-        db.updateWatchedRenameSuggestionStatus(normalizedWorkspaceId, id, 'dismissed')
-      )));
-      notifyRenderer('watched-rename-suggestions-changed', { workspaceId: normalizedWorkspaceId });
-      return { success: true };
-    } catch (error) {
-      return { error: error.message };
-    }
-  });
-
-  registerHandler('refresh-watched-rename-suggestions', async (_event, workspaceId, suggestionIds) => {
-    try {
-      const normalizedWorkspaceId = normalizeWorkspaceId(workspaceId);
-      const ids = normalizeWatchedSuggestionIds(suggestionIds);
-      const rows = await db.getWatchedRenameSuggestionsByIds(normalizedWorkspaceId, ids);
-      for (const row of rows) {
-        await watchFolderManager.handleDetectedPath({
+  registerHandler(
+    'remove-watch-folder',
+    async (_event, workspaceId, folderId) => {
+      try {
+        const normalizedWorkspaceId = normalizeWorkspaceId(workspaceId);
+        const result = await db.removeWatchFolder(
+          normalizedWorkspaceId,
+          folderId
+        );
+        await watchFolderManager.reloadWatchers();
+        notifyRenderer('watch-folders-changed', {
           workspaceId: normalizedWorkspaceId,
-          folderPath: row.folder_path,
-          filePath: row.file_path
         });
+        return result;
+      } catch (error) {
+        return { error: error.message };
       }
-      notifyRenderer('watched-rename-suggestions-changed', { workspaceId: normalizedWorkspaceId });
-      return { success: true };
-    } catch (error) {
-      return { error: error.message };
     }
-  });
+  );
 
-  registerHandler('apply-watched-rename-suggestions', async (event, workspaceId, suggestionIds) => {
-    try {
-      const normalizedWorkspaceId = normalizeWorkspaceId(workspaceId);
-      const ids = normalizeWatchedSuggestionIds(suggestionIds);
-      const rows = await db.getWatchedRenameSuggestionsByIds(normalizedWorkspaceId, ids);
-      const groupedByFolder = new Map();
+  registerHandler(
+    'set-watch-folder-enabled',
+    async (_event, workspaceId, folderId, enabled) => {
+      try {
+        const normalizedWorkspaceId = normalizeWorkspaceId(workspaceId);
+        const result = await db.setWatchFolderEnabled(
+          normalizedWorkspaceId,
+          folderId,
+          enabled === true
+        );
+        await watchFolderManager.reloadWatchers();
+        notifyRenderer('watch-folders-changed', {
+          workspaceId: normalizedWorkspaceId,
+        });
+        return result;
+      } catch (error) {
+        return { error: error.message };
+      }
+    }
+  );
 
-      for (const row of rows) {
-        if (row.status !== 'suggested' || !row.suggested_name) {
-          await db.updateWatchedRenameSuggestionStatus(
-            normalizedWorkspaceId,
-            row.id,
-            'error',
-            'No suggested filename to apply'
-          );
-          continue;
+  registerHandler(
+    'get-watched-rename-suggestions',
+    async (_event, workspaceId) => {
+      try {
+        const normalizedWorkspaceId = normalizeWorkspaceId(workspaceId);
+        const rows = await db.getWatchedRenameSuggestions(
+          normalizedWorkspaceId
+        );
+        return {
+          success: true,
+          suggestions: toWatchedRenameSuggestionsPayload(rows),
+        };
+      } catch (error) {
+        return { error: error.message };
+      }
+    }
+  );
+
+  registerHandler(
+    'dismiss-watched-rename-suggestions',
+    async (_event, workspaceId, suggestionIds) => {
+      try {
+        const normalizedWorkspaceId = normalizeWorkspaceId(workspaceId);
+        const ids = normalizeWatchedSuggestionIds(suggestionIds);
+        await Promise.all(
+          ids.map((id) =>
+            db.updateWatchedRenameSuggestionStatus(
+              normalizedWorkspaceId,
+              id,
+              'dismissed'
+            )
+          )
+        );
+        notifyRenderer('watched-rename-suggestions-changed', {
+          workspaceId: normalizedWorkspaceId,
+        });
+        return { success: true };
+      } catch (error) {
+        return { error: error.message };
+      }
+    }
+  );
+
+  registerHandler(
+    'refresh-watched-rename-suggestions',
+    async (_event, workspaceId, suggestionIds) => {
+      try {
+        const normalizedWorkspaceId = normalizeWorkspaceId(workspaceId);
+        const ids = normalizeWatchedSuggestionIds(suggestionIds);
+        const rows = await db.getWatchedRenameSuggestionsByIds(
+          normalizedWorkspaceId,
+          ids
+        );
+        for (const row of rows) {
+          await watchFolderManager.handleDetectedPath({
+            workspaceId: normalizedWorkspaceId,
+            folderPath: row.folder_path,
+            filePath: row.file_path,
+          });
         }
+        notifyRenderer('watched-rename-suggestions-changed', {
+          workspaceId: normalizedWorkspaceId,
+        });
+        return { success: true };
+      } catch (error) {
+        return { error: error.message };
+      }
+    }
+  );
 
-        let stats;
-        try {
-          stats = await fs.lstat(row.file_path);
-        } catch (error) {
-          if (error.code === 'ENOENT' || error.code === 'ENOTDIR') {
+  registerHandler(
+    'apply-watched-rename-suggestions',
+    async (event, workspaceId, suggestionIds) => {
+      try {
+        const normalizedWorkspaceId = normalizeWorkspaceId(workspaceId);
+        const ids = normalizeWatchedSuggestionIds(suggestionIds);
+        const rows = await db.getWatchedRenameSuggestionsByIds(
+          normalizedWorkspaceId,
+          ids
+        );
+        const groupedByFolder = new Map();
+
+        for (const row of rows) {
+          if (row.status !== 'suggested' || !row.suggested_name) {
+            await db.updateWatchedRenameSuggestionStatus(
+              normalizedWorkspaceId,
+              row.id,
+              'error',
+              'No suggested filename to apply'
+            );
+            continue;
+          }
+
+          let stats;
+          try {
+            stats = await fs.lstat(row.file_path);
+          } catch (error) {
+            if (error.code === 'ENOENT' || error.code === 'ENOTDIR') {
+              await db.updateWatchedRenameSuggestionStatus(
+                normalizedWorkspaceId,
+                row.id,
+                'stale',
+                'File changed since suggestion was generated'
+              );
+              continue;
+            }
+            throw error;
+          }
+
+          const isStale =
+            !stats.isFile() ||
+            stats.isSymbolicLink() ||
+            stats.size !== row.file_size ||
+            stats.mtimeMs !== row.file_mtime_ms;
+          if (isStale) {
             await db.updateWatchedRenameSuggestionStatus(
               normalizedWorkspaceId,
               row.id,
@@ -607,73 +694,65 @@ function createWindow() {
             );
             continue;
           }
-          throw error;
+
+          if (!groupedByFolder.has(row.folder_path)) {
+            groupedByFolder.set(row.folder_path, []);
+          }
+          groupedByFolder.get(row.folder_path).push({
+            id: row.id,
+            originalName: row.original_name,
+            suggestedName: row.suggested_name,
+            reason: row.reason || '',
+          });
         }
 
-        const isStale = !stats.isFile()
-          || stats.isSymbolicLink()
-          || stats.size !== row.file_size
-          || stats.mtimeMs !== row.file_mtime_ms;
-        if (isStale) {
-          await db.updateWatchedRenameSuggestionStatus(
-            normalizedWorkspaceId,
-            row.id,
-            'stale',
-            'File changed since suggestion was generated'
+        const results = [];
+        for (const [directoryPath, renames] of groupedByFolder.entries()) {
+          const result = await applyRenameSuggestions({
+            directoryPath,
+            suggestions: {
+              categories: [
+                {
+                  name: 'Files to Rename',
+                  description: 'Files that will be renamed',
+                  suggestedPath: '.',
+                  files: renames.map((rename) => rename.originalName),
+                  renames,
+                },
+              ],
+            },
+            db,
+            onProgress: (channel, progressPayload) =>
+              event.sender.send(channel, progressPayload),
+          });
+          results.push(result);
+
+          const errorsByFile = new Map(
+            (result.errors || []).map((item) => [item.file, item.error])
           );
-          continue;
+          for (const rename of renames) {
+            const error = errorsByFile.get(rename.originalName);
+            await db.updateWatchedRenameSuggestionStatus(
+              normalizedWorkspaceId,
+              rename.id,
+              error ? 'error' : 'applied',
+              error || null
+            );
+          }
         }
 
-        if (!groupedByFolder.has(row.folder_path)) {
-          groupedByFolder.set(row.folder_path, []);
-        }
-        groupedByFolder.get(row.folder_path).push({
-          id: row.id,
-          originalName: row.original_name,
-          suggestedName: row.suggested_name,
-          reason: row.reason || ''
+        notifyRenderer('watched-rename-suggestions-changed', {
+          workspaceId: normalizedWorkspaceId,
         });
+        return {
+          success: results.every((result) => result.success),
+          results,
+        };
+      } catch (error) {
+        return { error: error.message };
       }
-
-      const results = [];
-      for (const [directoryPath, renames] of groupedByFolder.entries()) {
-        const result = await applyRenameSuggestions({
-          directoryPath,
-          suggestions: {
-            categories: [{
-              name: 'Files to Rename',
-              description: 'Files that will be renamed',
-              suggestedPath: '.',
-              files: renames.map((rename) => rename.originalName),
-              renames
-            }]
-          },
-          db,
-          onProgress: (channel, progressPayload) => event.sender.send(channel, progressPayload)
-        });
-        results.push(result);
-
-        const errorsByFile = new Map((result.errors || []).map((item) => [item.file, item.error]));
-        for (const rename of renames) {
-          const error = errorsByFile.get(rename.originalName);
-          await db.updateWatchedRenameSuggestionStatus(
-            normalizedWorkspaceId,
-            rename.id,
-            error ? 'error' : 'applied',
-            error || null
-          );
-        }
-      }
-
-      notifyRenderer('watched-rename-suggestions-changed', { workspaceId: normalizedWorkspaceId });
-      return {
-        success: results.every((result) => result.success),
-        results
-      };
-    } catch (error) {
-      return { error: error.message };
     }
-  });
+  );
 
   // Settings handlers
   registerHandler('save-settings', async (event, settings) => {
@@ -699,7 +778,10 @@ function createWindow() {
 
       // If no settings exist, try to migrate from JSON file
       try {
-        const settingsPath = path.join(app.getPath('userData'), 'settings.json');
+        const settingsPath = path.join(
+          app.getPath('userData'),
+          'settings.json'
+        );
         const data = await fs.readFile(settingsPath, 'utf8');
         const jsonSettings = normalizeSettingsPayload(JSON.parse(data));
 
@@ -721,8 +803,8 @@ function createWindow() {
             apiKeys: {},
             selectedProvider: null,
             selectedModel: null,
-            renameFiles: false
-          }
+            renameFiles: false,
+          },
         };
       }
     } catch (error) {
@@ -743,12 +825,16 @@ function createWindow() {
         defaultPath: `${exportData.workspace.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_workspace.json`,
         filters: [
           { name: 'JSON Files', extensions: ['json'] },
-          { name: 'All Files', extensions: ['*'] }
-        ]
+          { name: 'All Files', extensions: ['*'] },
+        ],
       });
 
       if (!result.canceled && result.filePath) {
-        await fs.writeFile(result.filePath, JSON.stringify(exportData, null, 2), 'utf8');
+        await fs.writeFile(
+          result.filePath,
+          JSON.stringify(exportData, null, 2),
+          'utf8'
+        );
         return { success: true, filePath: result.filePath };
       }
 
@@ -768,9 +854,9 @@ function createWindow() {
         title: 'Import Workspace',
         filters: [
           { name: 'JSON Files', extensions: ['json'] },
-          { name: 'All Files', extensions: ['*'] }
+          { name: 'All Files', extensions: ['*'] },
         ],
-        properties: ['openFile']
+        properties: ['openFile'],
       });
 
       if (result.canceled || !result.filePaths.length) {
@@ -778,8 +864,13 @@ function createWindow() {
       }
 
       const filePath = result.filePaths[0];
-      const workspaceData = validateWorkspaceImportData(await readJsonImportFile(filePath));
-      const importResult = await db.importWorkspace(workspaceData, importOptions);
+      const workspaceData = validateWorkspaceImportData(
+        await readJsonImportFile(filePath)
+      );
+      const importResult = await db.importWorkspace(
+        workspaceData,
+        importOptions
+      );
       return importResult;
     } catch (error) {
       console.error('Failed to import workspace:', error);
@@ -797,12 +888,16 @@ function createWindow() {
         defaultPath: `keepdir_backup_${new Date().toISOString().split('T')[0]}.json`,
         filters: [
           { name: 'JSON Files', extensions: ['json'] },
-          { name: 'All Files', extensions: ['*'] }
-        ]
+          { name: 'All Files', extensions: ['*'] },
+        ],
       });
 
       if (!result.canceled && result.filePath) {
-        await fs.writeFile(result.filePath, JSON.stringify(exportData, null, 2), 'utf8');
+        await fs.writeFile(
+          result.filePath,
+          JSON.stringify(exportData, null, 2),
+          'utf8'
+        );
         return { success: true, filePath: result.filePath };
       }
 
@@ -822,9 +917,9 @@ function createWindow() {
         title: 'Import All Data (Restore Backup)',
         filters: [
           { name: 'JSON Files', extensions: ['json'] },
-          { name: 'All Files', extensions: ['*'] }
+          { name: 'All Files', extensions: ['*'] },
         ],
-        properties: ['openFile']
+        properties: ['openFile'],
       });
 
       if (result.canceled || !result.filePaths.length) {
@@ -832,7 +927,9 @@ function createWindow() {
       }
 
       const filePath = result.filePaths[0];
-      const backupData = validateAllDataImport(await readJsonImportFile(filePath));
+      const backupData = validateAllDataImport(
+        await readJsonImportFile(filePath)
+      );
       const importResult = await db.importAllData(backupData, importOptions);
       return importResult;
     } catch (error) {
@@ -853,33 +950,48 @@ function createWindow() {
     }
   });
 
-  registerHandler('create-custom-section', async (event, workspaceId, sectionData) => {
-    try {
-      const normalizedWorkspaceId = normalizeWorkspaceId(workspaceId);
-      const normalizedSectionData = normalizeCustomSectionData(sectionData);
-      const section = await db.createCustomSection(normalizedWorkspaceId, normalizedSectionData);
-      return { success: true, section };
-    } catch (error) {
-      console.error('Failed to create custom section:', error);
-      return { error: error.message };
+  registerHandler(
+    'create-custom-section',
+    async (event, workspaceId, sectionData) => {
+      try {
+        const normalizedWorkspaceId = normalizeWorkspaceId(workspaceId);
+        const normalizedSectionData = normalizeCustomSectionData(sectionData);
+        const section = await db.createCustomSection(
+          normalizedWorkspaceId,
+          normalizedSectionData
+        );
+        return { success: true, section };
+      } catch (error) {
+        console.error('Failed to create custom section:', error);
+        return { error: error.message };
+      }
     }
-  });
+  );
 
-  registerHandler('update-custom-section', async (event, sectionId, updates) => {
-    try {
-      const normalizedSectionId = normalizeRecordId(sectionId, 'Custom section id');
-      const normalizedUpdates = normalizeCustomSectionUpdates(updates);
-      await db.updateCustomSection(normalizedSectionId, normalizedUpdates);
-      return { success: true };
-    } catch (error) {
-      console.error('Failed to update custom section:', error);
-      return { error: error.message };
+  registerHandler(
+    'update-custom-section',
+    async (event, sectionId, updates) => {
+      try {
+        const normalizedSectionId = normalizeRecordId(
+          sectionId,
+          'Custom section id'
+        );
+        const normalizedUpdates = normalizeCustomSectionUpdates(updates);
+        await db.updateCustomSection(normalizedSectionId, normalizedUpdates);
+        return { success: true };
+      } catch (error) {
+        console.error('Failed to update custom section:', error);
+        return { error: error.message };
+      }
     }
-  });
+  );
 
   registerHandler('delete-custom-section', async (event, sectionId) => {
     try {
-      const normalizedSectionId = normalizeRecordId(sectionId, 'Custom section id');
+      const normalizedSectionId = normalizeRecordId(
+        sectionId,
+        'Custom section id'
+      );
       await db.deleteCustomSection(normalizedSectionId);
       return { success: true };
     } catch (error) {
@@ -888,79 +1000,114 @@ function createWindow() {
     }
   });
 
-  registerHandler('add-item-to-custom-section', async (event, sectionId, item) => {
-    try {
-      const normalizedSectionId = normalizeRecordId(sectionId, 'Custom section id');
-      const normalizedItem = normalizeCustomSectionItem(item);
-      const items = await db.addItemToCustomSection(normalizedSectionId, normalizedItem);
-      return { success: true, items };
-    } catch (error) {
-      console.error('Failed to add item to custom section:', error);
-      return { error: error.message };
+  registerHandler(
+    'add-item-to-custom-section',
+    async (event, sectionId, item) => {
+      try {
+        const normalizedSectionId = normalizeRecordId(
+          sectionId,
+          'Custom section id'
+        );
+        const normalizedItem = normalizeCustomSectionItem(item);
+        const items = await db.addItemToCustomSection(
+          normalizedSectionId,
+          normalizedItem
+        );
+        return { success: true, items };
+      } catch (error) {
+        console.error('Failed to add item to custom section:', error);
+        return { error: error.message };
+      }
     }
-  });
+  );
 
-  registerHandler('remove-item-from-custom-section', async (event, sectionId, itemId) => {
-    try {
-      const normalizedSectionId = normalizeRecordId(sectionId, 'Custom section id');
-      const normalizedItemId = normalizeRecordId(itemId, 'Custom section item id');
-      const items = await db.removeItemFromCustomSection(normalizedSectionId, normalizedItemId);
-      return { success: true, items };
-    } catch (error) {
-      console.error('Failed to remove item from custom section:', error);
-      return { error: error.message };
+  registerHandler(
+    'remove-item-from-custom-section',
+    async (event, sectionId, itemId) => {
+      try {
+        const normalizedSectionId = normalizeRecordId(
+          sectionId,
+          'Custom section id'
+        );
+        const normalizedItemId = normalizeRecordId(
+          itemId,
+          'Custom section item id'
+        );
+        const items = await db.removeItemFromCustomSection(
+          normalizedSectionId,
+          normalizedItemId
+        );
+        return { success: true, items };
+      } catch (error) {
+        console.error('Failed to remove item from custom section:', error);
+        return { error: error.message };
+      }
     }
-  });
-
+  );
 
   // Register IPC handlers for file analysis
-  registerHandler('analyze-directory-for-sort', async (event, directoryPath, selectedPaths) => {
-    return analysisService.analyzeDirectory({
-      sender: event.sender,
-      directoryPath,
-      renameFiles: false,
-      selectedPaths
-    });
-  });
+  registerHandler(
+    'analyze-directory-for-sort',
+    async (event, directoryPath, selectedPaths) => {
+      return analysisService.analyzeDirectory({
+        sender: event.sender,
+        directoryPath,
+        renameFiles: false,
+        selectedPaths,
+      });
+    }
+  );
 
-  registerHandler('analyze-directory-for-rename', async (event, directoryPath, selectedPaths) => {
-    return analysisService.analyzeDirectory({
-      sender: event.sender,
-      directoryPath,
-      renameFiles: true,
-      selectedPaths
-    });
-  });
+  registerHandler(
+    'analyze-directory-for-rename',
+    async (event, directoryPath, selectedPaths) => {
+      return analysisService.analyzeDirectory({
+        sender: event.sender,
+        directoryPath,
+        renameFiles: true,
+        selectedPaths,
+      });
+    }
+  );
 
   // Register IPC handlers for fresh analysis (bypassing cache)
-  registerHandler('analyze-directory-for-sort-fresh', async (event, directoryPath, selectedPaths) => {
-    return analysisService.analyzeDirectory({
-      sender: event.sender,
-      directoryPath,
-      renameFiles: false,
-      selectedPaths,
-      forceRefresh: true
-    });
-  });
+  registerHandler(
+    'analyze-directory-for-sort-fresh',
+    async (event, directoryPath, selectedPaths) => {
+      return analysisService.analyzeDirectory({
+        sender: event.sender,
+        directoryPath,
+        renameFiles: false,
+        selectedPaths,
+        forceRefresh: true,
+      });
+    }
+  );
 
-  registerHandler('analyze-directory-for-rename-fresh', async (event, directoryPath, selectedPaths) => {
-    return analysisService.analyzeDirectory({
-      sender: event.sender,
-      directoryPath,
-      renameFiles: true,
-      selectedPaths,
-      forceRefresh: true
-    });
-  });
+  registerHandler(
+    'analyze-directory-for-rename-fresh',
+    async (event, directoryPath, selectedPaths) => {
+      return analysisService.analyzeDirectory({
+        sender: event.sender,
+        directoryPath,
+        renameFiles: true,
+        selectedPaths,
+        forceRefresh: true,
+      });
+    }
+  );
   // Handler for applying suggestions with batch processing
   registerHandler('apply-suggestions', async (event, payload = {}) => {
     try {
-      const directoryPath = await requireExistingDirectoryPath(payload.directoryPath);
+      const directoryPath = await requireExistingDirectoryPath(
+        payload.directoryPath
+      );
       return applySortSuggestions({
         directoryPath,
         suggestions: payload.suggestions,
         db,
-        onProgress: (channel, progressPayload) => event.sender.send(channel, progressPayload)
+        onProgress: (channel, progressPayload) =>
+          event.sender.send(channel, progressPayload),
       });
     } catch (error) {
       return {
@@ -968,7 +1115,7 @@ function createWindow() {
         partial: false,
         movedFiles: [],
         errors: [{ file: 'unknown', error: error.message }],
-        error: error.message
+        error: error.message,
       };
     }
   });
@@ -976,12 +1123,15 @@ function createWindow() {
   // Handler for applying renames with batch processing
   registerHandler('apply-renames', async (event, payload = {}) => {
     try {
-      const directoryPath = await requireExistingDirectoryPath(payload.directoryPath);
+      const directoryPath = await requireExistingDirectoryPath(
+        payload.directoryPath
+      );
       return applyRenameSuggestions({
         directoryPath,
         suggestions: payload.suggestions,
         db,
-        onProgress: (channel, progressPayload) => event.sender.send(channel, progressPayload)
+        onProgress: (channel, progressPayload) =>
+          event.sender.send(channel, progressPayload),
       });
     } catch (error) {
       return {
@@ -989,10 +1139,12 @@ function createWindow() {
         partial: false,
         error: error.message,
         renamedFiles: [],
-        errors: [{
-          file: 'unknown',
-          error: error.message
-        }]
+        errors: [
+          {
+            file: 'unknown',
+            error: error.message,
+          },
+        ],
       };
     }
   });
@@ -1021,19 +1173,22 @@ function createWindow() {
 // This method will be called when Electron has finished initialization
 if (app) {
   debugLog('App exists');
-  app.whenReady().then(() => {
-    debugLog('App ready');
-    createWindow();
+  app
+    .whenReady()
+    .then(() => {
+      debugLog('App ready');
+      createWindow();
 
-    app.on('activate', () => {
-      debugLog('App activated');
-      if (BrowserWindow.getAllWindows().length === 0) {
-        createWindow();
-      }
+      app.on('activate', () => {
+        debugLog('App activated');
+        if (BrowserWindow.getAllWindows().length === 0) {
+          createWindow();
+        }
+      });
+    })
+    .catch((err) => {
+      console.error('Failed to initialize app:', err);
     });
-  }).catch(err => {
-    console.error('Failed to initialize app:', err);
-  });
 
   // Quit when all windows are closed
   app.on('window-all-closed', () => {
