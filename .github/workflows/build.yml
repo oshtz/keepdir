@@ -139,7 +139,7 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           if [ -n "$APPLE_SIGNING_IDENTITY" ]; then
-            export CSC_NAME="$APPLE_SIGNING_IDENTITY"
+            export CSC_NAME="${APPLE_SIGNING_IDENTITY#Developer ID Application: }"
           fi
           npm run dist:mac
 
