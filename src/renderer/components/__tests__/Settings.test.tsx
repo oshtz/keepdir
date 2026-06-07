@@ -122,6 +122,14 @@ describe('Settings', () => {
     expect(screen.getAllByText('Settings')).toHaveLength(1);
   });
 
+  it('should render as a flat modal sheet', async () => {
+    await act(async () => {
+      render(<Settings {...defaultProps} />);
+    });
+
+    expect(screen.getByTestId('settings-dialog-shell')).toHaveAttribute('data-surface', 'modal-sheet');
+  });
+
   it('should not render when closed', async () => {
     await act(async () => {
       render(<Settings {...defaultProps} open={false} />);
@@ -140,6 +148,36 @@ describe('Settings', () => {
       expect(screen.getByText('Dark Mode')).toBeInTheDocument();
       expect(screen.getByText('Accent Color')).toBeInTheDocument();
     });
+  });
+
+  it('should combine global and workspace appearance in the general tab', async () => {
+    await act(async () => {
+      render(<Settings {...defaultProps} />);
+    });
+
+    expect(screen.queryByText('Workspace Themes')).not.toBeInTheDocument();
+    expect(screen.getByText('Global defaults')).toBeInTheDocument();
+    expect(screen.getByText('Workspace override')).toBeInTheDocument();
+    expect(screen.getByTestId('global-accent-color-row')).toHaveAttribute('data-density', 'compact');
+  });
+
+  it('should create a workspace appearance override from the general tab', async () => {
+    await act(async () => {
+      render(<Settings {...defaultProps} />);
+    });
+
+    const overrideSwitch = screen.getByLabelText('Use workspace-specific appearance');
+    await act(async () => {
+      fireEvent.click(overrideSwitch);
+    });
+
+    expect(mockWorkspaceContext.setWorkspaceTheme).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: 'Test Workspace Theme',
+        accentColor: '#FF5733',
+        darkMode: false,
+      })
+    );
   });
 
   it('should render API keys tab', async () => {
@@ -611,20 +649,23 @@ describe('Settings', () => {
     });
   });
 
-  describe('Workspace Themes', () => {
+  describe('Workspace Appearance Override', () => {
     it('should update workspace theme dark mode', async () => {
+      (useWorkspace as jest.Mock).mockReturnValue({
+        ...mockWorkspaceContext,
+        workspaceTheme: {
+          name: 'Test Workspace Theme',
+          accentColor: '#FF5733',
+          darkMode: false,
+          customColors: {}
+        },
+      });
+
       await act(async () => {
         render(<Settings {...defaultProps} />);
       });
       
-      // Click on Workspace Themes tab
-      const themesTab = screen.getByText('Workspace Themes');
-      await act(async () => {
-        fireEvent.click(themesTab);
-      });
-      
-      // Find and toggle dark mode switch
-      const darkModeSwitch = screen.getByLabelText('Dark Mode (Workspace Override)');
+      const darkModeSwitch = screen.getByLabelText('Workspace dark mode');
       await act(async () => {
         fireEvent.click(darkModeSwitch);
       });
@@ -638,17 +679,20 @@ describe('Settings', () => {
     });
 
     it('should reset workspace theme to global', async () => {
+      (useWorkspace as jest.Mock).mockReturnValue({
+        ...mockWorkspaceContext,
+        workspaceTheme: {
+          name: 'Test Workspace Theme',
+          accentColor: '#FF5733',
+          darkMode: false,
+          customColors: {}
+        },
+      });
+
       await act(async () => {
         render(<Settings {...defaultProps} />);
       });
       
-      // Click on Workspace Themes tab
-      const themesTab = screen.getByText('Workspace Themes');
-      await act(async () => {
-        fireEvent.click(themesTab);
-      });
-      
-      // Find and click reset button
       const resetButton = screen.getByText('Reset to Global Theme');
       await act(async () => {
         fireEvent.click(resetButton);
@@ -742,18 +786,12 @@ describe('Settings', () => {
         render(<Settings {...defaultProps} onAccentColorChange={onAccentColorChange} />);
       });
       
-      // Find a color option and click it
-      const colorOptions = screen.getAllByRole('generic').filter(el =>
-        el.style.backgroundColor && el.style.cursor === 'pointer'
-      );
+      const colorButton = screen.getByRole('button', { name: 'Set accent color to #E74C3C' });
+      await act(async () => {
+        fireEvent.click(colorButton);
+      });
       
-      if (colorOptions.length > 0) {
-        await act(async () => {
-          fireEvent.click(colorOptions[1]); // Click second color option
-        });
-        
-        expect(onAccentColorChange).toHaveBeenCalled();
-      }
+      expect(onAccentColorChange).toHaveBeenCalledWith('#E74C3C');
     });
   });
 
@@ -1030,14 +1068,7 @@ describe('Settings', () => {
         render(<Settings {...defaultProps} />);
       });
 
-      // Click on Workspace Themes tab
-      const themesTab = screen.getByText('Workspace Themes');
-      await act(async () => {
-        fireEvent.click(themesTab);
-      });
-
-      // Find and toggle dark mode switch
-      const darkModeSwitch = screen.getByLabelText('Dark Mode (Workspace Override)');
+      const darkModeSwitch = screen.getByLabelText('Workspace dark mode');
       await act(async () => {
         fireEvent.click(darkModeSwitch);
       });
@@ -1065,44 +1096,37 @@ describe('Settings', () => {
         render(<Settings {...defaultProps} />);
       });
 
-      // Click on Workspace Themes tab
-      const themesTab = screen.getByText('Workspace Themes');
+      const colorButton = screen.getByRole('button', { name: 'Set workspace accent color to #3498DB' });
       await act(async () => {
-        fireEvent.click(themesTab);
+        fireEvent.click(colorButton);
       });
 
-      // Find a workspace color option and click it
-      const colorOptions = screen.getAllByRole('generic').filter(el =>
-        el.style.backgroundColor && el.style.cursor === 'pointer'
-      );
-
-      if (colorOptions.length > 1) {
-        await act(async () => {
-          fireEvent.click(colorOptions[1]); // Click second color option
-        });
-
-        expect(mockWorkspaceContext.setWorkspaceTheme).toHaveBeenCalled();
-      }
+      expect(mockWorkspaceContext.setWorkspaceTheme).toHaveBeenCalledWith({
+        name: 'Test Workspace Theme',
+        accentColor: '#3498DB',
+        darkMode: true,
+        customColors: { primary: '#FF0000' }
+      });
     });
 
-    it('should handle apply theme button click', async () => {
+    it('should update workspace appearance without a separate apply step', async () => {
       await act(async () => {
         render(<Settings {...defaultProps} />);
       });
 
-      // Click on Workspace Themes tab
-      const themesTab = screen.getByText('Workspace Themes');
+      const overrideSwitch = screen.getByLabelText('Use workspace-specific appearance');
       await act(async () => {
-        fireEvent.click(themesTab);
+        fireEvent.click(overrideSwitch);
       });
 
-      // Find and click apply theme button
-      const applyButton = screen.getByText('Apply Theme');
-      await act(async () => {
-        fireEvent.click(applyButton);
-      });
-
-      expect(screen.getByText('Workspace theme saved')).toBeInTheDocument();
+      expect(screen.queryByText('Apply Theme')).not.toBeInTheDocument();
+      expect(mockWorkspaceContext.setWorkspaceTheme).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: 'Test Workspace Theme',
+          accentColor: '#FF5733',
+          darkMode: false,
+        })
+      );
     });
 
     it('should handle reset theme when no current workspace', async () => {
@@ -1115,13 +1139,6 @@ describe('Settings', () => {
         render(<Settings {...defaultProps} />);
       });
 
-      // Click on Workspace Themes tab
-      const themesTab = screen.getByText('Workspace Themes');
-      await act(async () => {
-        fireEvent.click(themesTab);
-      });
-
-      // Should show "No workspace selected" message
       expect(screen.getByText('No workspace selected')).toBeInTheDocument();
     });
   });

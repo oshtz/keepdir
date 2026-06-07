@@ -152,7 +152,7 @@ test.describe('Electron smoke', () => {
     await expect(page).toHaveTitle(/keepdir/i);
     await expect(page.getByText('WORKSPACES')).toBeVisible();
     await expect(page.getByText('Select Directory')).toBeVisible();
-    await expect(page.getByText('Selected Model')).toBeVisible();
+    await expect(page.getByRole('combobox')).toHaveCount(2);
   });
 
   test('persists a selected folder and custom sidebar section across restart', async () => {

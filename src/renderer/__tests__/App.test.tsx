@@ -136,7 +136,7 @@ describe('App', () => {
         selectedProvider: 'google',
         selectedModel: 'gemini-2.0-flash-exp',
         renameFiles: false,
-        accentColor: '#FF5733'
+        accentColor: '#525252'
       }
     });
     mockElectronAPI.getProviderModels.mockResolvedValue({
@@ -146,7 +146,7 @@ describe('App', () => {
     
     localStorageMock.getItem.mockImplementation((key) => {
       if (key === 'darkMode') return 'false';
-      if (key === 'accentColor') return '#FF5733';
+      if (key === 'accentColor') return '#525252';
       return null;
     });
   });
@@ -154,6 +154,21 @@ describe('App', () => {
   afterEach(() => {
     jest.clearAllTimers();
     jest.restoreAllMocks();
+  });
+
+  it('should use monochrome primary tokens by default while preserving custom accents', () => {
+    const { DEFAULT_MONO_ACCENT_COLOR, getTheme } = jest.requireActual('../App');
+
+    const lightTheme = getTheme(false);
+    const darkTheme = getTheme(true);
+    const customTheme = getTheme(false, '#00FF00');
+
+    expect(DEFAULT_MONO_ACCENT_COLOR).toBe('#525252');
+    expect(lightTheme.palette.primary.main).toBe('#525252');
+    expect(lightTheme.palette.background.default).toBe('#F7F7F7');
+    expect(darkTheme.palette.primary.main).toBe('#E5E5E5');
+    expect(darkTheme.palette.background.default).toBe('#151515');
+    expect(customTheme.palette.primary.main).toBe('#00FF00');
   });
 
   it('should render without crashing', async () => {
@@ -203,7 +218,7 @@ describe('App', () => {
   it('should handle dark mode from localStorage', async () => {
     localStorageMock.getItem.mockImplementation((key) => {
       if (key === 'darkMode') return 'true';
-      if (key === 'accentColor') return '#FF5733';
+      if (key === 'accentColor') return '#525252';
       return null;
     });
 
@@ -227,7 +242,7 @@ describe('App Theme Handling', () => {
         selectedProvider: 'google',
         selectedModel: 'gemini-2.0-flash-exp',
         renameFiles: false,
-        accentColor: '#FF5733'
+        accentColor: '#525252'
       }
     });
     mockElectronAPI.getProviderModels.mockResolvedValue({
@@ -237,7 +252,7 @@ describe('App Theme Handling', () => {
     
     localStorageMock.getItem.mockImplementation((key) => {
       if (key === 'darkMode') return 'false';
-      if (key === 'accentColor') return '#FF5733';
+      if (key === 'accentColor') return '#525252';
       return null;
     });
   });
@@ -276,7 +291,7 @@ describe('App Advanced Functionality', () => {
         selectedProvider: 'google',
         selectedModel: 'gemini-2.0-flash-exp',
         renameFiles: false,
-        accentColor: '#FF5733'
+        accentColor: '#525252'
       }
     });
     mockElectronAPI.getProviderModels.mockResolvedValue({
@@ -286,7 +301,7 @@ describe('App Advanced Functionality', () => {
     
     localStorageMock.getItem.mockImplementation((key) => {
       if (key === 'darkMode') return 'false';
-      if (key === 'accentColor') return '#FF5733';
+      if (key === 'accentColor') return '#525252';
       return null;
     });
   });

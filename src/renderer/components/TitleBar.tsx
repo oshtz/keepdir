@@ -41,19 +41,35 @@ const TitleBar: React.FC<TitleBarProps> = ({ children }) => {
     >
       {/* App Title - Left side */}
       <Box sx={{
-        fontSize: '0.875rem',
-        fontFamily: 'var(--font-header)',
-        fontWeight: 600,
-        color: 'text.primary',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 0.75,
         flexShrink: 0,
-        minWidth: '60px',
-        maxWidth: '100px',
-        overflow: 'hidden',
-        textOverflow: 'ellipsis',
-        whiteSpace: 'nowrap',
+        minWidth: '84px',
+        maxWidth: '140px',
         mr: 1
       }}>
-        keepdir
+        <Box
+          aria-hidden
+          sx={{
+            width: 18,
+            height: 18,
+            borderRadius: 0.75,
+            bgcolor: 'primary.main',
+            boxShadow: 'inset 0 -6px 0 rgba(0,0,0,0.12)',
+          }}
+        />
+        <Box sx={{
+          fontSize: '0.875rem',
+          fontFamily: 'var(--font-header)',
+          fontWeight: 700,
+          color: 'text.primary',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+        }}>
+          keepdir
+        </Box>
       </Box>
 
       {/* Children content in the middle section */}
@@ -84,6 +100,7 @@ const TitleBar: React.FC<TitleBarProps> = ({ children }) => {
       }}>
         <IconButton
           size="small"
+          aria-label="Minimize window"
           onClick={() => handleWindowControl('minimize')}
           sx={{
             p: 0.5,
@@ -99,6 +116,7 @@ const TitleBar: React.FC<TitleBarProps> = ({ children }) => {
         </IconButton>
         <IconButton
           size="small"
+          aria-label="Maximize window"
           onClick={() => handleWindowControl('maximize')}
           sx={{
             p: 0.5,
@@ -114,6 +132,7 @@ const TitleBar: React.FC<TitleBarProps> = ({ children }) => {
         </IconButton>
         <IconButton
           size="small"
+          aria-label="Close window"
           onClick={() => handleWindowControl('close')}
           sx={{
             p: 0.5,

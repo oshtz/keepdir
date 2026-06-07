@@ -12,6 +12,7 @@ import { useContextMenu } from "../hooks/useContextMenu";
 import Badge from "@mui/material/Badge";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
+import Chip from "@mui/material/Chip";
 import IconButton from "@mui/material/IconButton";
 import Grid from "@mui/material/Grid";
 import List from "@mui/material/List";
@@ -172,6 +173,30 @@ const DirectoryExplorer: React.FC<DirectoryExplorerProps> = ({
       return true;
     });
   }, [files, searchTerm, filters]);
+
+  const selectedCount = selectedItems.size;
+  const visibleFolderCount = filteredFiles.filter((file) => file.isDirectory).length;
+  const visibleFileCount = filteredFiles.length - visibleFolderCount;
+  const currentFolderName = currentDirectoryPath
+    ? currentDirectoryPath.split(/[\\/]/).filter(Boolean).pop() || currentDirectoryPath
+    : "No folder selected";
+  const viewToggleSx = (active: boolean) => ({
+    width: 34,
+    height: 34,
+    borderRadius: 1,
+    border: "none",
+    bgcolor: active ? "action.selected" : "transparent",
+    color: active ? "text.primary" : "text.secondary",
+    "&:hover": {
+      bgcolor: "action.hover",
+      color: "text.primary",
+    },
+  });
+
+  const clearSelection = useCallback(() => {
+    setSelectedItems(new Set());
+    lastSelectedPathRef.current = null;
+  }, []);
 
   const formatFileSize = (bytes: number) => {
     const units = ["B", "KB", "MB", "GB"];
@@ -979,38 +1004,27 @@ const DirectoryExplorer: React.FC<DirectoryExplorerProps> = ({
               p: 1.25,
               textAlign: "center",
               cursor: "pointer",
-              height: 110,
-              display: "flex",
-              flexDirection: "column",
-              justifyContent: "space-between",
+              height: 118,
+              display: "grid",
+              gridTemplateRows: "22px 40px 18px 14px",
+              rowGap: 0.35,
+              alignItems: "center",
+              justifyItems: "center",
               "&:hover": {
                 bgcolor: "action.hover",
-                transform: "translateY(-1px)",
-                boxShadow: "0 3px 10px rgba(0,0,0,0.15)",
+                borderColor: "divider",
               },
-              borderRadius: 1.5,
+              borderRadius: 2,
               bgcolor: selectedItems.has(file.path)
-                ? "primary.light"
-                : "background.paper",
-              border: selectedItems.has(file.path) ? "2px solid" : "1px solid",
+                ? "action.selected"
+                : "transparent",
+              border: "1px solid",
               borderColor: selectedItems.has(file.path)
                 ? "primary.main"
-                : "divider",
-              transition: "all 0.2s ease",
+                : "transparent",
+              transition: "border-color 0.16s ease, background-color 0.16s ease",
               position: "relative",
               overflow: "hidden",
-              "&::before": selectedItems.has(file.path)
-                ? {
-                    content: '""',
-                    position: "absolute",
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    height: "3px",
-                    background:
-                      "linear-gradient(90deg, primary.main, primary.light)",
-                  }
-                : {},
             }}
             onClick={(e) => handleFileClick(file, false, e)}
             onContextMenu={(e) => handleContextMenu(e, file)}
@@ -1018,32 +1032,13 @@ const DirectoryExplorer: React.FC<DirectoryExplorerProps> = ({
           >
             <Box
               sx={{
-                position: "relative",
+                width: "100%",
+                height: 22,
                 display: "flex",
-                justifyContent: "center",
                 alignItems: "center",
-                flex: 1,
+                justifyContent: "flex-end",
               }}
             >
-              {file.isDirectory ? (
-                <FolderIcon
-                  sx={{
-                    fontSize: 36,
-                    color: "primary.main",
-                    filter: "drop-shadow(0 2px 4px rgba(0,0,0,0.1))",
-                    transition: "all 0.2s ease",
-                  }}
-                />
-              ) : (
-                <InsertDriveFileIcon
-                  sx={{
-                    fontSize: 36,
-                    color: "text.secondary",
-                    filter: "drop-shadow(0 2px 4px rgba(0,0,0,0.1))",
-                    transition: "all 0.2s ease",
-                  }}
-                />
-              )}
               {file.isDirectory && (
                 <IconButton
                   className="enhanced-icon-button"
@@ -1053,27 +1048,19 @@ const DirectoryExplorer: React.FC<DirectoryExplorerProps> = ({
                     handleToggleFavorite(file.path, file.name);
                   }}
                   sx={{
-                    position: "absolute",
-                    top: -4,
-                    right: -4,
                     width: 22,
                     height: 22,
-                    backgroundColor: "background.paper",
-                    boxShadow: "0 2px 6px rgba(0,0,0,0.15)",
+                    backgroundColor: "background.default",
+                    boxShadow: "none",
                     border: "1px solid",
                     borderColor: "divider",
                     "&:hover": {
-                      backgroundColor: favoriteFolders.some(
-                        (f) => f.path === file.path,
-                      )
-                        ? "warning.light"
-                        : "primary.light",
+                      backgroundColor: "action.hover",
                       borderColor: favoriteFolders.some(
                         (f) => f.path === file.path,
                       )
                         ? "warning.main"
                         : "primary.main",
-                      transform: "scale(1.1)",
                     },
                   }}
                 >
@@ -1087,36 +1074,59 @@ const DirectoryExplorer: React.FC<DirectoryExplorerProps> = ({
                 </IconButton>
               )}
             </Box>
-            <Box sx={{ mt: 0.5 }}>
-              <Typography
-                noWrap
-                variant="body2"
-                className={file.isDirectory ? "directory-name" : "file-name"}
-                sx={{
-                  fontFamily: "var(--font-body)",
-                  fontWeight: file.isDirectory ? 600 : 400,
-                  color: file.isDirectory ? "text.primary" : "text.secondary",
-                  fontSize: "0.8rem",
-                  lineHeight: 1.2,
-                  mb: 0.25,
-                }}
-                title={file.name}
-              >
-                {file.name}
-              </Typography>
-              {!file.isDirectory && (
-                <Typography
-                  variant="caption"
-                  color="text.secondary"
+            <Box
+              sx={{
+                height: 40,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              {file.isDirectory ? (
+                <FolderIcon
                   sx={{
-                    fontFamily: "var(--font-body)",
-                    fontSize: "0.7rem",
+                    fontSize: 36,
+                    color: "primary.main",
                   }}
-                >
-                  {formatFileSize(file.size)}
-                </Typography>
+                />
+              ) : (
+                <InsertDriveFileIcon
+                  sx={{
+                    fontSize: 36,
+                    color: "text.secondary",
+                  }}
+                />
               )}
             </Box>
+            <Typography
+              noWrap
+              variant="body2"
+              className={file.isDirectory ? "directory-name" : "file-name"}
+              sx={{
+                width: "100%",
+                fontFamily: "var(--font-body)",
+                fontWeight: file.isDirectory ? 600 : 400,
+                color: file.isDirectory ? "text.primary" : "text.secondary",
+                fontSize: "0.8rem",
+                lineHeight: 1.2,
+              }}
+              title={file.name}
+            >
+              {file.name}
+            </Typography>
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              aria-hidden={file.isDirectory ? true : undefined}
+              sx={{
+                fontFamily: "var(--font-body)",
+                fontSize: "0.7rem",
+                lineHeight: 1.1,
+                visibility: file.isDirectory ? "hidden" : "visible",
+              }}
+            >
+              {file.isDirectory ? "Folder" : formatFileSize(file.size)}
+            </Typography>
           </Box>
         </Grid>
       ))}
@@ -1139,6 +1149,8 @@ const DirectoryExplorer: React.FC<DirectoryExplorerProps> = ({
               ? "action.selected"
               : "transparent",
             transition: "background-color 0.2s",
+            borderRadius: 1.5,
+            mb: 0.5,
           }}
         >
           <Box sx={{ display: "flex", alignItems: "center" }}>
@@ -1295,18 +1307,17 @@ const DirectoryExplorer: React.FC<DirectoryExplorerProps> = ({
               flexDirection: "column",
               "&:hover": {
                 bgcolor: "action.hover",
-                transform: "translateY(-2px)",
-                boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+                borderColor: "divider",
               },
-              borderRadius: 1.5,
+              borderRadius: 2,
               bgcolor: selectedItems.has(file.path)
-                ? "primary.light"
-                : "background.paper",
-              border: selectedItems.has(file.path) ? "2px solid" : "1px solid",
+                ? "action.selected"
+                : "transparent",
+              border: "1px solid",
               borderColor: selectedItems.has(file.path)
                 ? "primary.main"
-                : "divider",
-              transition: "all 0.2s ease",
+                : "transparent",
+              transition: "border-color 0.16s ease, background-color 0.16s ease",
             }}
             onClick={(e) => handleFileClick(file, false, e)}
             onContextMenu={(e) => handleContextMenu(e, file)}
@@ -1576,28 +1587,34 @@ const DirectoryExplorer: React.FC<DirectoryExplorerProps> = ({
         overflow: "hidden",
       }}
     >
-      {/* Visual separator */}
       <Box
-        sx={{
-          height: "1px",
-          background:
-            "linear-gradient(90deg, transparent, rgba(0,0,0,0.1), transparent)",
-          mb: 1,
-          mx: 1,
-        }}
-      />
-
-      <Box
+        data-testid="directory-toolbar"
+        data-surface="plain-row"
         sx={{
           display: "flex",
-          alignItems: "center",
-          mb: 1,
-          gap: 1,
+          alignItems: { xs: "stretch", md: "center" },
+          justifyContent: "space-between",
+          gap: 1.5,
           flexShrink: 0,
-          px: 1,
+          px: { xs: 1, sm: 1.5 },
+          py: 1,
+          mt: 0,
+          mb: 0,
+          borderBottom: "1px solid",
+          borderColor: "divider",
+          bgcolor: "transparent",
+          flexDirection: { xs: "column", lg: "row" },
         }}
       >
-        <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+        <Box
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            gap: 1,
+            minWidth: 0,
+            flex: 1,
+          }}
+        >
           <Button
             className="enhanced-button"
             variant="contained"
@@ -1606,11 +1623,61 @@ const DirectoryExplorer: React.FC<DirectoryExplorerProps> = ({
               fontFamily: "var(--font-header)",
               borderRadius: 1.5,
               px: 2.5,
+              flexShrink: 0,
             }}
             size="small"
           >
             Select Directory
           </Button>
+          <Box sx={{ minWidth: 0, display: { xs: "none", sm: "block" } }}>
+            <Typography
+              variant="body2"
+              sx={{
+                fontFamily: "var(--font-header)",
+                fontWeight: 700,
+                color: "text.primary",
+                lineHeight: 1.2,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {currentFolderName}
+            </Typography>
+            <Typography
+              variant="caption"
+              sx={{
+                display: "block",
+                mt: 0.35,
+                color: "text.secondary",
+                fontFamily: "var(--font-body)",
+              }}
+            >
+              {visibleFolderCount} folders · {visibleFileCount} files
+            </Typography>
+          </Box>
+        </Box>
+
+        <Box
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: { xs: "space-between", lg: "flex-end" },
+            gap: 1,
+            flexWrap: "wrap",
+          }}
+        >
+          <Box
+            aria-label="View mode"
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              gap: 0.5,
+              p: 0,
+              borderRadius: 1,
+              bgcolor: "transparent",
+            }}
+          >
           <IconButton
             className="enhanced-icon-button"
             onClick={() => setViewMode("grid")}
@@ -1618,12 +1685,7 @@ const DirectoryExplorer: React.FC<DirectoryExplorerProps> = ({
             title="Grid View (1)"
             aria-pressed={viewMode === "grid"}
             aria-label="Grid view"
-            sx={{
-              bgcolor: viewMode === "grid" ? "primary.light" : "transparent",
-              color: viewMode === "grid" ? "primary.main" : "text.secondary",
-              border: "1px solid",
-              borderColor: viewMode === "grid" ? "primary.main" : "divider",
-            }}
+            sx={viewToggleSx(viewMode === "grid")}
           >
             <GridViewIcon />
           </IconButton>
@@ -1634,12 +1696,7 @@ const DirectoryExplorer: React.FC<DirectoryExplorerProps> = ({
             title="List View (2)"
             aria-pressed={viewMode === "list"}
             aria-label="List view"
-            sx={{
-              bgcolor: viewMode === "list" ? "primary.light" : "transparent",
-              color: viewMode === "list" ? "primary.main" : "text.secondary",
-              border: "1px solid",
-              borderColor: viewMode === "list" ? "primary.main" : "divider",
-            }}
+            sx={viewToggleSx(viewMode === "list")}
           >
             <ListIcon />
           </IconButton>
@@ -1650,12 +1707,7 @@ const DirectoryExplorer: React.FC<DirectoryExplorerProps> = ({
             title="Table View (3)"
             aria-pressed={viewMode === "table"}
             aria-label="Table view"
-            sx={{
-              bgcolor: viewMode === "table" ? "primary.light" : "transparent",
-              color: viewMode === "table" ? "primary.main" : "text.secondary",
-              border: "1px solid",
-              borderColor: viewMode === "table" ? "primary.main" : "divider",
-            }}
+            sx={viewToggleSx(viewMode === "table")}
           >
             <TableRowsIcon />
           </IconButton>
@@ -1666,12 +1718,7 @@ const DirectoryExplorer: React.FC<DirectoryExplorerProps> = ({
             title="Tiles View (4)"
             aria-pressed={viewMode === "tiles"}
             aria-label="Tiles view"
-            sx={{
-              bgcolor: viewMode === "tiles" ? "primary.light" : "transparent",
-              color: viewMode === "tiles" ? "primary.main" : "text.secondary",
-              border: "1px solid",
-              borderColor: viewMode === "tiles" ? "primary.main" : "divider",
-            }}
+            sx={viewToggleSx(viewMode === "tiles")}
           >
             <ViewModuleIcon />
           </IconButton>
@@ -1682,12 +1729,7 @@ const DirectoryExplorer: React.FC<DirectoryExplorerProps> = ({
             title="Compact View (5)"
             aria-pressed={viewMode === "compact"}
             aria-label="Compact view"
-            sx={{
-              bgcolor: viewMode === "compact" ? "primary.light" : "transparent",
-              color: viewMode === "compact" ? "primary.main" : "text.secondary",
-              border: "1px solid",
-              borderColor: viewMode === "compact" ? "primary.main" : "divider",
-            }}
+            sx={viewToggleSx(viewMode === "compact")}
           >
             <ViewCompactIcon />
           </IconButton>
@@ -1698,21 +1740,16 @@ const DirectoryExplorer: React.FC<DirectoryExplorerProps> = ({
             title="Details View (6)"
             aria-pressed={viewMode === "details"}
             aria-label="Details view"
-            sx={{
-              bgcolor: viewMode === "details" ? "primary.light" : "transparent",
-              color: viewMode === "details" ? "primary.main" : "text.secondary",
-              border: "1px solid",
-              borderColor: viewMode === "details" ? "primary.main" : "divider",
-            }}
+            sx={viewToggleSx(viewMode === "details")}
           >
             <ViewListIcon />
           </IconButton>
+          </Box>
         </Box>
-        <Box sx={{ flexGrow: 1 }} />
-        <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+        <Box sx={{ display: "flex", alignItems: "center", gap: 1, flexWrap: "wrap" }}>
           <Button
             className="enhanced-button"
-            variant="contained"
+            variant="outlined"
             onClick={handleRename}
             disabled={!currentDirectoryPath}
             startIcon={<DriveFileRenameOutlineIcon />}
@@ -1727,7 +1764,7 @@ const DirectoryExplorer: React.FC<DirectoryExplorerProps> = ({
           </Button>
           <Button
             className="enhanced-button"
-            variant="contained"
+            variant="outlined"
             onClick={handleSort}
             disabled={!currentDirectoryPath}
             startIcon={<SortIcon />}
@@ -1753,6 +1790,87 @@ const DirectoryExplorer: React.FC<DirectoryExplorerProps> = ({
           </IconButton>
         </Box>
       </Box>
+
+      {selectedCount > 0 && (
+        <Box
+          sx={{
+            mx: 0,
+            mb: 0,
+            px: 1.5,
+            py: 0.85,
+            borderBottom: "1px solid",
+            borderColor: "divider",
+            bgcolor: "action.selected",
+            color: "text.primary",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 1,
+            flexWrap: "wrap",
+          }}
+        >
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1, minWidth: 0 }}>
+            <Chip
+              label={`${selectedCount} selected`}
+              size="small"
+              sx={{
+                bgcolor: "background.default",
+                color: "text.primary",
+                fontFamily: "var(--font-header)",
+                fontWeight: 700,
+              }}
+            />
+            <Typography
+              variant="body2"
+              sx={{
+                fontFamily: "var(--font-body)",
+                opacity: 0.9,
+                display: { xs: "none", sm: "block" },
+              }}
+            >
+              Review AI changes before anything is applied.
+            </Typography>
+          </Box>
+          <Box sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
+            <Button
+              size="small"
+              variant="text"
+              onClick={clearSelection}
+              sx={{
+                color: "inherit",
+                fontFamily: "var(--font-header)",
+                "&:hover": { bgcolor: "action.hover" },
+              }}
+            >
+              Clear selection
+            </Button>
+            <Button
+              size="small"
+              variant="contained"
+              onClick={handleRename}
+              sx={{
+                fontFamily: "var(--font-header)",
+                boxShadow: "none",
+                "&:hover": { boxShadow: "none" },
+              }}
+            >
+              Rename selected
+            </Button>
+            <Button
+              size="small"
+              variant="contained"
+              onClick={handleSort}
+              sx={{
+                fontFamily: "var(--font-header)",
+                boxShadow: "none",
+                "&:hover": { boxShadow: "none" },
+              }}
+            >
+              Sort selected
+            </Button>
+          </Box>
+        </Box>
+      )}
 
       {renderBreadcrumbs()}
 
@@ -1802,34 +1920,61 @@ const DirectoryExplorer: React.FC<DirectoryExplorerProps> = ({
             alignItems: "center",
             justifyContent: "center",
             flexGrow: 1,
+            p: 3,
           }}
         >
           {currentDirectoryPath ? (
-            <Typography
-              variant="body1"
-              color="text.secondary"
-              align="center"
-              fontSize={24}
-              sx={{ fontFamily: "var(--font-header)" }}
+            <Box
+              data-testid="directory-folder-empty-state"
+              data-surface="canvas"
+              sx={{
+                textAlign: "center",
+                maxWidth: 420,
+                p: 0,
+              }}
             >
-              {searchTerm ? "No matching files found" : "This folder is empty"}
-            </Typography>
-          ) : (
-            <Box sx={{ textAlign: "center" }}>
+              <FolderOpenIcon sx={{ fontSize: 42, color: "text.secondary", opacity: 0.8, mb: 1 }} />
               <Typography
-                variant="body1"
+                variant="h6"
+                color="text.primary"
+                align="center"
+                sx={{ fontFamily: "var(--font-header)", fontWeight: 700 }}
+              >
+                {searchTerm ? "No matching files found" : "This folder is empty"}
+              </Typography>
+              <Typography
+                variant="body2"
                 color="text.secondary"
-                fontSize={24}
-                fontWeight="bold"
+                sx={{ mt: 0.75, fontFamily: "var(--font-body)" }}
+              >
+                {searchTerm
+                  ? "Try a different search term or clear filters to broaden the view."
+                  : "Choose another folder or add files here, then refresh the directory."}
+              </Typography>
+            </Box>
+          ) : (
+            <Box
+              data-testid="directory-empty-state"
+              data-surface="canvas"
+              sx={{
+                textAlign: "center",
+                maxWidth: 440,
+                p: 0,
+              }}
+            >
+              <FolderOpenIcon sx={{ fontSize: 48, color: "text.secondary", opacity: 0.85, mb: 1 }} />
+              <Typography
+                variant="h5"
+                color="text.primary"
+                fontWeight={800}
                 sx={{ fontFamily: "var(--font-header)" }}
               >
                 Select a directory
               </Typography>
               <Typography
-                variant="body1"
+                variant="body2"
                 color="text.secondary"
-                fontSize={18}
-                sx={{ fontFamily: "var(--font-header)" }}
+                sx={{ mt: 0.75, fontFamily: "var(--font-body)" }}
               >
                 to view its contents
               </Typography>

@@ -24,35 +24,32 @@ const AnimatedButton: React.FC<AnimatedButtonProps> = ({
     switch (animationType) {
       case 'bounce':
         return {
-          whileHover: { scale: 1.05, y: -2 },
-          whileTap: { scale: 0.95, y: 0 },
+          whileHover: { scale: 1.02 },
+          whileTap: { scale: 0.98 },
           transition: bounceTransition
         };
       case 'slide':
         return {
-          whileHover: { x: 2, scale: 1.02 },
-          whileTap: { x: 0, scale: 0.98 },
+          whileHover: { x: 1 },
+          whileTap: { x: 0 },
           transition: slideTransition
         };
       case 'glow':
         return {
-          whileHover: {
-            scale: 1.02,
-            boxShadow: '0 0 20px rgba(255, 87, 51, 0.4)'
-          },
+          whileHover: { scale: 1.01 },
           whileTap: { scale: 0.98 },
           transition: glowTransition
         };
       case 'ripple':
         return {
-          whileHover: { scale: 1.03 },
-          whileTap: { scale: 0.97 },
+          whileHover: { scale: 1.01 },
+          whileTap: { scale: 0.98 },
           transition: rippleTransition
         };
       default: // scale
         return {
-          whileHover: { scale: 1.05 },
-          whileTap: { scale: 0.95 },
+          whileHover: { scale: 1.02 },
+          whileTap: { scale: 0.98 },
           transition: springTransition
         };
     }
@@ -62,22 +59,29 @@ const AnimatedButton: React.FC<AnimatedButtonProps> = ({
     switch (variant) {
       case 'gradient':
         return {
-          background: 'linear-gradient(135deg, #FF5733 0%, #FF8C66 100%)',
+          backgroundColor: 'primary.main',
           border: 'none',
-          color: 'white',
+          color: 'primary.contrastText',
           '&:hover': {
-            background: 'linear-gradient(135deg, #FF8C66 0%, #FF5733 100%)',
+            backgroundColor: 'primary.dark',
           }
         };
       case 'glow':
         return {
-          background: 'rgba(255, 87, 51, 0.1)',
-          border: '1px solid rgba(255, 87, 51, 0.3)',
-          color: '#FF5733',
-          backdropFilter: 'blur(10px)',
+          background: (theme: any) =>
+            theme.palette.mode === 'dark'
+              ? 'rgba(255,255,255,0.07)'
+              : 'rgba(0,0,0,0.04)',
+          border: '1px solid',
+          borderColor: 'divider',
+          color: 'primary.main',
+          boxShadow: 'none',
           '&:hover': {
-            background: 'rgba(255, 87, 51, 0.2)',
-            border: '1px solid rgba(255, 87, 51, 0.5)',
+            background: (theme: any) =>
+              theme.palette.mode === 'dark'
+                ? 'rgba(255,255,255,0.1)'
+                : 'rgba(0,0,0,0.07)',
+            borderColor: 'primary.main',
           }
         };
       default:

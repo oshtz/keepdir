@@ -263,6 +263,27 @@ describe('DirectoryExplorer', () => {
     expect(fileElement).toBeTruthy();
   });
 
+  it('should show a selection command bar after selecting an item', async () => {
+    await act(async () => {
+      render(<DirectoryExplorer />);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('file1.txt')).toBeInTheDocument();
+    });
+
+    const fileElement = screen.getByText('file1.txt').closest('div');
+
+    await act(async () => {
+      if (fileElement) {
+        fireEvent.click(fileElement);
+      }
+    });
+
+    expect(screen.getByText('1 selected')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /clear selection/i })).toBeInTheDocument();
+  });
+
   it('should handle double-click on directory', async () => {
     await act(async () => {
       render(<DirectoryExplorer />);
@@ -423,6 +444,20 @@ describe('DirectoryExplorer', () => {
     
     expect(screen.getByText('Select a directory')).toBeInTheDocument();
     expect(screen.getByText('to view its contents')).toBeInTheDocument();
+  });
+
+  it('should render the empty shell with flat workbench surfaces', async () => {
+    (useWorkspace as jest.Mock).mockReturnValue({
+      ...mockWorkspaceContext,
+      currentDirectoryPath: null,
+    });
+
+    await act(async () => {
+      render(<DirectoryExplorer />);
+    });
+
+    expect(screen.getByTestId('directory-toolbar')).toHaveAttribute('data-surface', 'plain-row');
+    expect(screen.getByTestId('directory-empty-state')).toHaveAttribute('data-surface', 'canvas');
   });
 
   it('should show empty folder message when directory has no files', async () => {

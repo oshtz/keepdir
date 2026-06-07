@@ -1,13 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import Box from '@mui/material/Box';
-import Card from '@mui/material/Card';
-import CardContent from '@mui/material/CardContent';
 import Typography from '@mui/material/Typography';
 import TextField from '@mui/material/TextField';
 import Button from '@mui/material/Button';
 import CircularProgress from '@mui/material/CircularProgress';
-import Chip from '@mui/material/Chip';
 import Alert from '@mui/material/Alert';
 
 interface ModelManagementProps {
@@ -123,6 +120,17 @@ const ModelManagement: React.FC<ModelManagementProps> = ({ selectedProvider, sel
   };
 
   if (loading) {
+    if (compact) {
+      return (
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, py: 0.25, color: 'text.secondary' }}>
+          <CircularProgress size={14} />
+          <Typography variant="caption" sx={{ fontFamily: 'var(--font-body)' }}>
+            Loading model
+          </Typography>
+        </Box>
+      );
+    }
+
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
         <CircularProgress />
@@ -135,30 +143,32 @@ const ModelManagement: React.FC<ModelManagementProps> = ({ selectedProvider, sel
     const model = models.find(m => m.name === modelToShow);
     if (model) {
       return (
-        <Card sx={{ 
-          height: '100%',
-          maxWidth: 300,
-          transition: 'transform 0.2s, box-shadow 0.2s',
-        }}>
-          <CardContent sx={{ p: 2 }}>
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <Typography variant="body1" noWrap sx={{ fontFamily: 'var(--font-header)' }}>
-                  {model.name}
-                </Typography>
-                <Chip
-                  label={model.status}
-                  color={model.status === 'ready' ? 'success' : 'warning'}
-                  size="small"
-                  sx={{ 
-                    borderRadius: 1.5,
-                    '& .MuiChip-label': { px: 1, fontFamily: 'var(--font-body)' }
-                  }}
-                />
-              </Box>
-            </Box>
-          </CardContent>
-        </Card>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0 }}>
+          <Typography
+            variant="body2"
+            noWrap
+            sx={{
+              minWidth: 0,
+              flex: 1,
+              fontFamily: 'var(--font-header)',
+              fontWeight: 700,
+              color: 'text.primary',
+            }}
+          >
+            {model.name}
+          </Typography>
+          <Typography
+            variant="caption"
+            sx={{
+              flexShrink: 0,
+              fontFamily: 'var(--font-body)',
+              fontWeight: 700,
+              color: model.status === 'ready' ? 'success.main' : 'warning.main',
+            }}
+          >
+            {model.status}
+          </Typography>
+        </Box>
       );
     }
     return null;

@@ -16,7 +16,7 @@ interface FloatingActionButtonProps extends Omit<FabProps, 'variant'> {
 const FloatingActionButton: React.FC<FloatingActionButtonProps> = ({
   children,
   variant = 'circular',
-  rippleColor = 'rgba(255, 87, 51, 0.3)',
+  rippleColor = 'rgba(82, 82, 82, 0.28)',
   expandOnHover = false,
   actions = [],
   sx,
@@ -162,7 +162,7 @@ const FloatingActionButton: React.FC<FloatingActionButtonProps> = ({
                       boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
                       '&:hover': {
                         backgroundColor: 'primary.main',
-                        color: 'white'
+                        color: 'primary.contrastText'
                       }
                     }}
                   >

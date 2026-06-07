@@ -1,8 +1,6 @@
 import React from 'react';
-import { motion } from 'framer-motion';
 import { Box, List, ListItem, ListItemButton, ListItemIcon, ListItemText } from '@mui/material';
 import SettingsIcon from '@mui/icons-material/Settings';
-import PaletteIcon from '@mui/icons-material/Palette';
 import WorkspaceIcon from '@mui/icons-material/Workspaces';
 import ExtensionIcon from '@mui/icons-material/Extension';
 import SmartToyIcon from '@mui/icons-material/SmartToy';
@@ -15,14 +13,13 @@ interface SettingsTab {
 }
 
 interface SettingsSidepanelProps {
-  tabs: SettingsTab[];
+  tabs?: SettingsTab[];
   activeTab: string;
   onTabChange: (tabId: string) => void;
 }
 
 const defaultTabs: SettingsTab[] = [
   { id: 'general', label: 'General', icon: <SettingsIcon /> },
-  { id: 'themes', label: 'Workspace Themes', icon: <PaletteIcon /> },
   { id: 'workspace', label: 'Workspace', icon: <WorkspaceIcon /> },
   { id: 'sections', label: 'Custom Sections', icon: <ExtensionIcon /> },
   { id: 'providers', label: 'AI Providers', icon: <SmartToyIcon /> },
@@ -36,9 +33,11 @@ const SettingsSidepanel: React.FC<SettingsSidepanelProps> = ({
 }) => {
   return (
     <Box
+      data-testid="settings-sidepanel"
+      data-surface="plain-nav"
       sx={{
-        width: 240,
-        minWidth: 240,
+        width: 252,
+        minWidth: 252,
         height: '100%',
         minHeight: 0,
         borderRight: '1px solid',
@@ -49,9 +48,9 @@ const SettingsSidepanel: React.FC<SettingsSidepanelProps> = ({
         flexShrink: 0
       }}
     >
-      <List sx={{ 
-        flex: 1, 
-        p: 2, 
+      <List sx={{
+        flex: 1,
+        p: 1.5,
         overflow: 'auto',
         '&::-webkit-scrollbar': {
           width: '6px',
@@ -68,60 +67,41 @@ const SettingsSidepanel: React.FC<SettingsSidepanelProps> = ({
         },
       }}>
         {tabs.map((tab) => (
-          <ListItem key={tab.id} disablePadding sx={{ mb: 1 }}>
+          <ListItem key={tab.id} disablePadding sx={{ mb: 0.75 }}>
             <ListItemButton
               selected={activeTab === tab.id}
               onClick={() => onTabChange(tab.id)}
               sx={{
-                borderRadius: 1.5,
+                borderRadius: 1,
                 position: 'relative',
                 overflow: 'hidden',
-                py: 1.5,
-                px: 2,
+                py: 1.2,
+                px: 1.5,
                 '&.Mui-selected': {
-                  backgroundColor: 'primary.main',
-                  color: 'primary.contrastText',
+                  backgroundColor: 'action.selected',
+                  color: 'text.primary',
                   '&:hover': {
-                    backgroundColor: 'primary.dark'
+                    backgroundColor: 'action.hover'
                   },
                   '& .MuiListItemIcon-root': {
-                    color: 'primary.contrastText'
+                    color: 'text.primary'
                   }
                 },
                 '&:hover': {
                   backgroundColor: 'action.hover'
                 },
-                transition: 'all 0.2s ease'
+                transition: 'background-color 0.16s ease, color 0.16s ease'
               }}
             >
-              {activeTab === tab.id && (
-                <motion.div
-                  layoutId="activeSettingsTab"
-                  style={{
-                    position: 'absolute',
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    bottom: 0,
-                    backgroundColor: 'var(--mui-palette-primary-main)',
-                    borderRadius: 1.5,
-                    zIndex: 0
-                  }}
-                  initial={false}
-                  transition={{
-                    type: 'spring',
-                    stiffness: 500,
-                    damping: 30
-                  }}
-                />
-              )}
-              
               <ListItemIcon
                 sx={{
-                  minWidth: 36,
+                  minWidth: 34,
                   position: 'relative',
                   zIndex: 1,
-                  color: activeTab === tab.id ? 'primary.contrastText' : 'text.secondary'
+                  color: activeTab === tab.id ? 'text.primary' : 'text.secondary',
+                  '& .MuiSvgIcon-root': {
+                    fontSize: 19
+                  }
                 }}
               >
                 {tab.icon}
@@ -137,7 +117,7 @@ const SettingsSidepanel: React.FC<SettingsSidepanelProps> = ({
                     fontFamily: 'var(--font-body)',
                     fontSize: '0.875rem',
                     fontWeight: activeTab === tab.id ? 600 : 400,
-                    color: activeTab === tab.id ? 'primary.contrastText' : 'text.primary',
+                    color: activeTab === tab.id ? 'text.primary' : 'text.primary',
                     lineHeight: 1.2
                   }
                 }}

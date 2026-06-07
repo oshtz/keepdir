@@ -33,6 +33,12 @@ describe('SettingsSidepanel', () => {
     });
   });
 
+  it('should render as a plain settings navigation surface', () => {
+    render(<SettingsSidepanel {...defaultProps} />);
+
+    expect(screen.getByTestId('settings-sidepanel')).toHaveAttribute('data-surface', 'plain-nav');
+  });
+
   it('should highlight active tab', () => {
     render(<SettingsSidepanel {...defaultProps} activeTab="providers" />);
     
@@ -117,24 +123,19 @@ describe('SettingsSidepanel', () => {
     });
   });
 
-  it('should use default tabs when tabs prop uses default values', () => {
-    const propsWithDefaultTabs = {
-      tabs: mockTabs, // Using the same default tabs
-      activeTab: 'general',
-      onTabChange: jest.fn(),
-    };
+  it('should use the merged default appearance tabs when tabs are omitted', () => {
+    render(
+      <SettingsSidepanel
+        activeTab="general"
+        onTabChange={jest.fn()}
+      />
+    );
     
-    render(<SettingsSidepanel {...propsWithDefaultTabs} />);
-    
-    // Should render default tabs
     expect(screen.getByText('General')).toBeInTheDocument();
-    expect(screen.getByText('Workspace Themes')).toBeInTheDocument();
+    expect(screen.queryByText('Workspace Themes')).not.toBeInTheDocument();
     expect(screen.getByText('Workspace')).toBeInTheDocument();
     expect(screen.getByText('Custom Sections')).toBeInTheDocument();
-    expect(screen.getByText('Operation History')).toBeInTheDocument();
-    expect(screen.getByText('AI Rules & Presets')).toBeInTheDocument();
     expect(screen.getByText('AI Providers')).toBeInTheDocument();
     expect(screen.getByText('Keyboard Shortcuts')).toBeInTheDocument();
-    expect(screen.getByText('About & Updates')).toBeInTheDocument();
   });
 });

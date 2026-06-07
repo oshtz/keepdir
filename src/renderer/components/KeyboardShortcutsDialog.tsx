@@ -44,20 +44,25 @@ const KeyboardShortcutsDialog: React.FC<KeyboardShortcutsDialogProps> = ({
       PaperProps={{
         tabIndex: -1,
         sx: {
-          borderRadius: 1.5,
+          borderRadius: 1,
           maxHeight: '90vh',
           display: 'flex',
-          flexDirection: 'column'
+          flexDirection: 'column',
+          boxShadow: 'none',
+          border: '1px solid',
+          borderColor: 'divider',
+          backgroundImage: 'none'
         }
       }}
     >
       <DialogTitle sx={{ 
-        p: 3, 
-        background: 'linear-gradient(135deg, rgba(255,87,51,0.03) 0%, rgba(255,255,255,1) 100%)',
-        borderBottom: '1px solid rgba(0,0,0,0.06)'
+        p: 2.5,
+        backgroundColor: 'background.default',
+        borderBottom: '1px solid',
+        borderColor: 'divider'
       }}>
         <Box display="flex" alignItems="center">
-          <KeyboardIcon sx={{ mr: 2, color: 'primary.main' }} />
+          <KeyboardIcon sx={{ mr: 2, color: 'text.secondary' }} />
           <Typography variant="h5" component="div" sx={{ flexGrow: 1, fontWeight: 600, fontFamily: 'var(--font-header)' }}>
             Keyboard Shortcuts
           </Typography>
@@ -67,7 +72,7 @@ const KeyboardShortcutsDialog: React.FC<KeyboardShortcutsDialogProps> = ({
             sx={{ 
               color: 'text.secondary',
               '&:hover': { 
-                backgroundColor: 'rgba(0,0,0,0.04)',
+                backgroundColor: 'action.hover',
                 color: 'text.primary'
               }
             }}
@@ -106,13 +111,12 @@ const KeyboardShortcutsDialog: React.FC<KeyboardShortcutsDialogProps> = ({
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'space-between',
-                    p: 2,
-                    borderRadius: 1.5,
-                    backgroundColor: 'background.paper',
-                    border: '1px solid',
+                    py: 1.25,
+                    px: 0,
+                    borderBottom: '1px solid',
                     borderColor: 'divider',
                     '&:hover': {
-                      backgroundColor: 'action.hover'
+                      backgroundColor: 'transparent'
                     }
                   }}
                 >
@@ -134,7 +138,7 @@ const KeyboardShortcutsDialog: React.FC<KeyboardShortcutsDialogProps> = ({
                       fontFamily: 'monospace',
                       fontSize: '0.75rem',
                       fontWeight: 600,
-                      backgroundColor: 'background.default',
+                      backgroundColor: 'action.hover',
                       borderColor: 'divider'
                     }}
                   />
@@ -144,15 +148,15 @@ const KeyboardShortcutsDialog: React.FC<KeyboardShortcutsDialogProps> = ({
           </Box>
         ))}
         
-        <Box sx={{ mt: 4, p: 2, backgroundColor: 'info.light', borderRadius: 1.5 }}>
-          <Typography component="div" variant="body2" sx={{ fontFamily: 'var(--font-body)', color: 'info.dark' }}>
+        <Box sx={{ mt: 4, p: 2, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
+          <Typography component="div" variant="body2" sx={{ fontFamily: 'var(--font-body)', color: 'text.secondary' }}>
             <strong>Tip:</strong> Keyboard shortcuts are disabled when typing in input fields. 
             Press <Chip label="?" size="small" sx={{ mx: 0.5, fontSize: '0.7rem' }} /> to show this dialog anytime.
           </Typography>
         </Box>
       </DialogContent>
       
-      <DialogActions sx={{ p: 3 }}>
+      <DialogActions sx={{ p: 2, borderTop: '1px solid', borderColor: 'divider' }}>
         <Button 
           onClick={onClose}
           variant="contained"

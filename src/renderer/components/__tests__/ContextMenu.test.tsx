@@ -52,6 +52,20 @@ describe('ContextMenu', () => {
     expect(screen.getByText('Delete')).toBeInTheDocument();
   });
 
+  it('renders as a compact overlay sheet', () => {
+    render(
+      <ContextMenu
+        open={true}
+        position={{ x: 100, y: 200 }}
+        items={mockItems}
+        onItemClick={mockOnItemClick}
+        onClose={mockOnClose}
+      />
+    );
+
+    expect(screen.getByTestId('context-menu-overlay')).toHaveAttribute('data-surface', 'overlay-sheet');
+  });
+
   it('does not render when closed', () => {
     render(
       <ContextMenu

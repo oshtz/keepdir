@@ -172,20 +172,23 @@ const handleApply = () => {
       PaperProps={{
         tabIndex: -1,
         sx: {
-          borderRadius: 1.5,
+          borderRadius: 1,
           background: theme.palette.background.default,
+          boxShadow: 'none',
+          border: `1px solid ${theme.palette.divider}`,
+          backgroundImage: 'none',
         }
       }}
     >
       <DialogTitle
         sx={{
-          background: `linear-gradient(135deg, ${theme.palette.primary.main} 0%, ${theme.palette.primary.dark} 100%)`,
-          color: theme.palette.primary.contrastText,
-          borderRadius: 'var(--border-radius-medium) var(--border-radius-medium) 0 0',
+          backgroundColor: theme.palette.background.default,
+          color: theme.palette.text.primary,
+          borderBottom: `1px solid ${theme.palette.divider}`,
         }}
       >
         <Box display="flex" alignItems="center">
-          <EditIcon sx={{ mr: 1.5, fontSize: 28 }} />
+          <EditIcon sx={{ mr: 1.5, fontSize: 24, color: theme.palette.text.secondary }} />
           <Typography variant="h6" component="div" sx={{ flexGrow: 1, fontFamily: 'var(--font-header)', fontWeight: 600 }}>
             Rename Suggestions
           </Typography>
@@ -194,10 +197,10 @@ const handleApply = () => {
               onClick={onRefresh}
               size="small"
               sx={{
-                color: 'inherit',
+                color: theme.palette.text.secondary,
                 mr: 1,
                 '&:hover': {
-                  backgroundColor: 'rgba(255, 255, 255, 0.1)',
+                  backgroundColor: theme.palette.action.hover,
                 },
                 animation: loading ? 'spin 1s linear infinite' : 'none',
                 '@keyframes spin': {
@@ -215,7 +218,7 @@ const handleApply = () => {
               <RefreshIcon />
             </IconButton>
           )}
-          <IconButton onClick={onClose} size="small" sx={{ color: 'inherit' }}>
+          <IconButton onClick={onClose} size="small" sx={{ color: theme.palette.text.secondary }}>
             <CloseIcon />
           </IconButton>
         </Box>
@@ -297,18 +300,32 @@ const handleApply = () => {
                   <Box sx={{
                     display: 'flex',
                     alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: 2,
                     mb: 3,
                     p: 2,
                     backgroundColor: theme.palette.mode === 'dark'
-                      ? `rgba(${theme.palette.primary.main.replace('#', '').match(/.{2}/g)?.map(hex => parseInt(hex, 16)).join(', ')}, 0.15)`
-                      : `rgba(${theme.palette.primary.main.replace('#', '').match(/.{2}/g)?.map(hex => parseInt(hex, 16)).join(', ')}, 0.1)`,
-                    borderRadius: 1.5,
-                    border: `1px solid ${theme.palette.primary.main}40`
+                      ? theme.palette.action.selected
+                      : theme.palette.action.hover,
+                    borderRadius: 1,
                   }}>
-                    <AutoFixHighIcon sx={{ color: theme.palette.primary.main, mr: 1.5 }} />
-                    <Typography variant="body1" sx={{ fontFamily: 'var(--font-body)', color: theme.palette.text.primary }}>
-                      AI has analyzed your files and suggests the following renames:
-                    </Typography>
+                    <Box sx={{ display: 'flex', alignItems: 'center', minWidth: 0 }}>
+                      <AutoFixHighIcon sx={{ color: theme.palette.primary.main, mr: 1.5, flexShrink: 0 }} />
+                      <Box sx={{ minWidth: 0 }}>
+                        <Typography variant="body1" sx={{ fontFamily: 'var(--font-header)', color: theme.palette.text.primary, fontWeight: 700 }}>
+                          AI has analyzed your files and suggests the following renames:
+                        </Typography>
+                        <Typography variant="caption" sx={{ fontFamily: 'var(--font-body)', color: theme.palette.text.secondary }}>
+                          Review every proposed filename before applying changes.
+                        </Typography>
+                      </Box>
+                    </Box>
+                    <Chip
+                      label={`${suggestions.renames.length} items`}
+                      size="small"
+                      variant="outlined"
+                      sx={{ fontFamily: 'var(--font-body)', flexShrink: 0 }}
+                    />
                   </Box>
                   
                   <Stack spacing={2} sx={{
@@ -338,15 +355,14 @@ const handleApply = () => {
                         key={index}
                         sx={{
                           borderRadius: 1.5,
-                          border: `1px solid ${theme.palette.primary.main}40`,
+                          border: `1px solid ${theme.palette.divider}`,
                           background: theme.palette.background.paper,
-                          transition: 'all 0.3s ease',
+                          transition: 'background-color 0.16s ease, border-color 0.16s ease',
                           flexShrink: 0,
                           minHeight: 'auto',
                           '&:hover': {
-                            transform: 'translateY(-2px)',
-                            boxShadow: theme.shadows[8],
-                            border: `1px solid ${theme.palette.primary.main}80`,
+                            backgroundColor: theme.palette.action.hover,
+                            borderColor: theme.palette.divider,
                           }
                         }}
                       >
@@ -622,10 +638,10 @@ const handleApply = () => {
         </Box>
       </DialogContent>
 <DialogActions sx={{
-        p: 3,
-        backgroundColor: theme.palette.mode === 'dark'
-          ? theme.palette.background.paper
-          : `${theme.palette.background.default}CC`
+        p: 2,
+        gap: 1,
+        backgroundColor: theme.palette.background.default,
+        borderTop: `1px solid ${theme.palette.divider}`
       }}>
         <Button
           onClick={onClose}
@@ -650,14 +666,12 @@ const handleApply = () => {
           startIcon={activeTab === 'ai' ? <AutoFixHighIcon /> : <TextFieldsIcon />}
           sx={{
             fontFamily: 'var(--font-header)',
-            background: `linear-gradient(135deg, ${theme.palette.primary.main} 0%, ${theme.palette.primary.dark} 100%)`,
             borderRadius: 1.5,
             px: 3,
             py: 1,
+            boxShadow: 'none',
             '&:hover': {
-              background: `linear-gradient(135deg, ${theme.palette.primary.dark} 0%, ${theme.palette.primary.dark} 100%)`,
-              transform: 'translateY(-1px)',
-              boxShadow: theme.shadows[8]
+              boxShadow: 'none'
             },
             '&:disabled': {
               background: theme.palette.action.disabledBackground,

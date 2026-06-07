@@ -1559,7 +1559,7 @@ class Database {
    * Create a custom section
    */
   async createCustomSection(workspaceId, sectionData) {
-    const { name, icon = '📁', color = '#FF5733', items = [] } = sectionData;
+    const { name, icon = '📁', color = '#525252', items = [] } = sectionData;
     const id = `custom-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
     return new Promise((resolve, reject) => {

@@ -80,8 +80,23 @@ const WatchedRenameQueue: React.FC<WatchedRenameQueueProps> = ({ workspaceId, op
   };
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth PaperProps={{ tabIndex: -1 }}>
-      <DialogTitle>
+    <Dialog
+      open={open}
+      onClose={onClose}
+      maxWidth="md"
+      fullWidth
+      PaperProps={{
+        tabIndex: -1,
+        sx: {
+          borderRadius: 1,
+          boxShadow: 'none',
+          border: '1px solid',
+          borderColor: 'divider',
+          backgroundImage: 'none',
+        },
+      }}
+    >
+      <DialogTitle sx={{ borderBottom: '1px solid', borderColor: 'divider' }}>
         <Box sx={{ display: 'flex', alignItems: 'center' }}>
           <Typography variant="h6" sx={{ flex: 1, fontFamily: 'var(--font-header)' }}>
             Watched Rename Queue
@@ -92,7 +107,7 @@ const WatchedRenameQueue: React.FC<WatchedRenameQueueProps> = ({ workspaceId, op
         </Box>
       </DialogTitle>
 
-      <DialogContent dividers>
+      <DialogContent>
         {(error || actionError) && (
           <Alert severity="error" sx={{ mb: 2 }}>
             {error || actionError}
@@ -154,7 +169,7 @@ const WatchedRenameQueue: React.FC<WatchedRenameQueueProps> = ({ workspaceId, op
         ))}
       </DialogContent>
 
-      <DialogActions sx={{ p: 2, gap: 1 }}>
+      <DialogActions sx={{ p: 2, gap: 1, borderTop: '1px solid', borderColor: 'divider' }}>
         <Button startIcon={<DeleteIcon />} disabled={selected.length === 0} onClick={() => runAction(dismiss)}>
           Dismiss Selected
         </Button>

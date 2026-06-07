@@ -164,16 +164,21 @@ const ConflictResolutionDialog: React.FC<ConflictResolutionDialogProps> = ({
       PaperProps={{
         tabIndex: -1,
         sx: {
-          borderRadius: 1.5,
-          overflow: 'hidden'
+          borderRadius: 1,
+          overflow: 'hidden',
+          boxShadow: 'none',
+          border: '1px solid',
+          borderColor: 'divider',
+          backgroundImage: 'none'
         }
       }}
     >
       <DialogTitle
         sx={{
           p: 2,
-          background: 'linear-gradient(135deg, rgba(255,152,0,0.1) 0%, rgba(255,255,255,1) 100%)',
-          borderBottom: '1px solid rgba(0,0,0,0.06)'
+          backgroundColor: 'background.default',
+          borderBottom: '1px solid',
+          borderColor: 'divider'
         }}
       >
         <Box display="flex" alignItems="center" gap={1}>
@@ -203,7 +208,7 @@ const ConflictResolutionDialog: React.FC<ConflictResolutionDialogProps> = ({
             sx={{
               color: 'text.secondary',
               '&:hover': {
-                backgroundColor: 'rgba(0,0,0,0.04)',
+                backgroundColor: 'action.hover',
                 color: 'text.primary'
               }
             }}
@@ -218,11 +223,11 @@ const ConflictResolutionDialog: React.FC<ConflictResolutionDialogProps> = ({
         <Box
           sx={{
             p: 2,
-            backgroundColor: 'warning.light',
-            borderRadius: 1.5,
+            backgroundColor: 'action.hover',
+            borderRadius: 1,
             mb: 3,
-            border: '1px solid',
-            borderColor: 'warning.main'
+            borderLeft: '3px solid',
+            borderLeftColor: 'warning.main'
           }}
         >
           <Box display="flex" alignItems="center" gap={1} mb={1}>
@@ -297,11 +302,11 @@ const ConflictResolutionDialog: React.FC<ConflictResolutionDialogProps> = ({
                 sx={{
                   p: 2,
                   border: '1px solid',
-                  borderColor: selectedResolution === 'auto_increment' ? 'primary.main' : 'divider',
-                  borderRadius: 1.5,
-                  backgroundColor: selectedResolution === 'auto_increment' ? 'primary.light' : 'transparent',
+                  borderColor: 'divider',
+                  borderRadius: 1,
+                  backgroundColor: selectedResolution === 'auto_increment' ? 'action.selected' : 'transparent',
                   cursor: 'pointer',
-                  transition: 'all 0.2s ease'
+                  transition: 'background-color 0.16s ease'
                 }}
                 onClick={() => setSelectedResolution('auto_increment')}
               >
@@ -330,11 +335,11 @@ const ConflictResolutionDialog: React.FC<ConflictResolutionDialogProps> = ({
                 sx={{
                   p: 2,
                   border: '1px solid',
-                  borderColor: selectedResolution === 'rename' ? 'primary.main' : 'divider',
-                  borderRadius: 1.5,
-                  backgroundColor: selectedResolution === 'rename' ? 'primary.light' : 'transparent',
+                  borderColor: 'divider',
+                  borderRadius: 1,
+                  backgroundColor: selectedResolution === 'rename' ? 'action.selected' : 'transparent',
                   cursor: 'pointer',
-                  transition: 'all 0.2s ease'
+                  transition: 'background-color 0.16s ease'
                 }}
                 onClick={() => setSelectedResolution('rename')}
               >
@@ -380,11 +385,11 @@ const ConflictResolutionDialog: React.FC<ConflictResolutionDialogProps> = ({
                 sx={{
                   p: 2,
                   border: '1px solid',
-                  borderColor: selectedResolution === 'skip' ? 'primary.main' : 'divider',
-                  borderRadius: 1.5,
-                  backgroundColor: selectedResolution === 'skip' ? 'primary.light' : 'transparent',
+                  borderColor: 'divider',
+                  borderRadius: 1,
+                  backgroundColor: selectedResolution === 'skip' ? 'action.selected' : 'transparent',
                   cursor: 'pointer',
-                  transition: 'all 0.2s ease'
+                  transition: 'background-color 0.16s ease'
                 }}
                 onClick={() => setSelectedResolution('skip')}
               >
@@ -414,11 +419,11 @@ const ConflictResolutionDialog: React.FC<ConflictResolutionDialogProps> = ({
                   sx={{
                     p: 2,
                     border: '1px solid',
-                    borderColor: selectedResolution === 'merge' ? 'primary.main' : 'divider',
-                    borderRadius: 1.5,
-                    backgroundColor: selectedResolution === 'merge' ? 'primary.light' : 'transparent',
+                    borderColor: 'divider',
+                    borderRadius: 1,
+                    backgroundColor: selectedResolution === 'merge' ? 'action.selected' : 'transparent',
                     cursor: 'pointer',
-                    transition: 'all 0.2s ease'
+                    transition: 'background-color 0.16s ease'
                   }}
                   onClick={() => setSelectedResolution('merge')}
                 >
@@ -467,7 +472,7 @@ const ConflictResolutionDialog: React.FC<ConflictResolutionDialogProps> = ({
         )}
       </DialogContent>
 
-      <DialogActions sx={{ p: 3, gap: 1.5, borderTop: '1px solid', borderColor: 'divider' }}>
+      <DialogActions sx={{ p: 2, gap: 1, borderTop: '1px solid', borderColor: 'divider' }}>
         {totalConflicts > 1 && (
           <>
             <Button

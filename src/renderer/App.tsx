@@ -5,27 +5,21 @@ import Box from "@mui/material/Box";
 import Sidebar from "./components/Sidebar";
 import TitleBar from "./components/TitleBar";
 import DirectoryExplorer from "./components/DirectoryExplorer";
-import CircularProgress from "@mui/material/CircularProgress";
 import { WorkspaceProvider, useWorkspace } from "./contexts/WorkspaceContext";
 import { OperationHistoryProvider } from "./contexts/OperationHistoryContext";
 import { UpdateProvider } from "./contexts/UpdateContext";
 import { ToastProvider } from "./components/ToastNotification";
 import AutoUpdater from "./components/AutoUpdater";
-import {
-  SelectChangeEvent,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
-  TextField,
-} from "@mui/material";
+import { SelectChangeEvent } from "@mui/material";
 import Settings from "./components/Settings";
 import { useGlobalKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
-import SearchIcon from "@mui/icons-material/Search";
+import AppCommandBar from "./components/AppCommandBar";
 
-const getTheme = (
+export const DEFAULT_MONO_ACCENT_COLOR = "#525252";
+
+export const getTheme = (
   darkMode: boolean,
-  accentColor: string = "#FF5733",
+  accentColor: string = DEFAULT_MONO_ACCENT_COLOR,
   workspaceTheme?: any,
 ) => {
   // Generate light and dark variants of the accent color
@@ -37,7 +31,7 @@ const getTheme = (
           g: parseInt(result[2], 16),
           b: parseInt(result[3], 16),
         }
-      : { r: 255, g: 87, b: 51 };
+      : { r: 82, g: 82, b: 82 };
   };
 
   // Validate and sanitize color input
@@ -47,7 +41,7 @@ const getTheme = (
 
   const sanitizedAccentColor = isValidHexColor(accentColor)
     ? accentColor
-    : "#FF5733";
+    : DEFAULT_MONO_ACCENT_COLOR;
   const workspaceAccentColor = workspaceTheme?.accentColor;
   const sanitizedWorkspaceAccentColor =
     workspaceAccentColor && isValidHexColor(workspaceAccentColor)
@@ -57,48 +51,77 @@ const getTheme = (
   const finalDarkMode =
     workspaceTheme?.darkMode !== undefined ? workspaceTheme.darkMode : darkMode;
   const customColors = workspaceTheme?.customColors || {};
+  const sanitizedCustomPrimary =
+    customColors.primary && isValidHexColor(customColors.primary)
+      ? customColors.primary
+      : undefined;
+  const primaryBaseColor = sanitizedCustomPrimary || finalAccentColor;
 
-  const { r: finalR, g: finalG, b: finalB } = hexToRgb(finalAccentColor);
+  const usesDefaultMonoAccent =
+    !sanitizedCustomPrimary &&
+    finalAccentColor.toLowerCase() === DEFAULT_MONO_ACCENT_COLOR.toLowerCase();
+  const { r: finalR, g: finalG, b: finalB } = hexToRgb(primaryBaseColor);
   const finalLightVariant = `rgb(${Math.min(255, finalR + 40)}, ${Math.min(255, finalG + 40)}, ${Math.min(255, finalB + 40)})`;
   const finalDarkVariant = `rgb(${Math.max(0, finalR - 40)}, ${Math.max(0, finalG - 40)}, ${Math.max(0, finalB - 40)})`;
+  const monoPrimary = finalDarkMode
+    ? {
+        main: "#E5E5E5",
+        light: "#FAFAFA",
+        dark: "#A3A3A3",
+        contrastText: "#111111",
+      }
+    : {
+        main: DEFAULT_MONO_ACCENT_COLOR,
+        light: "#737373",
+        dark: "#262626",
+        contrastText: "#FFFFFF",
+      };
 
   return createTheme({
     palette: {
       mode: finalDarkMode ? "dark" : "light",
       primary: {
-        main: customColors.primary || finalAccentColor,
-        light: finalLightVariant,
-        dark: finalDarkVariant,
+        ...(usesDefaultMonoAccent
+          ? monoPrimary
+          : {
+              main: primaryBaseColor,
+              light: finalLightVariant,
+              dark: finalDarkVariant,
+              contrastText: "#FFFFFF",
+            }),
       },
       background: {
         default:
-          customColors.background || (finalDarkMode ? "#1A1A1A" : "#F8F9FA"),
-        paper: customColors.surface || (finalDarkMode ? "#2D2D2D" : "#FFFFFF"),
+          customColors.background || (finalDarkMode ? "#151515" : "#F7F7F7"),
+        paper: customColors.surface || (finalDarkMode ? "#1F1F1F" : "#FFFFFF"),
       },
       text: {
-        primary: finalDarkMode ? "#FFFFFF" : "#2D3436",
-        secondary: finalDarkMode ? "#B0B0B0" : "#636E72",
+        primary: finalDarkMode ? "#F5F5F5" : "#111111",
+        secondary: finalDarkMode ? "#A3A3A3" : "#626262",
       },
+      divider: finalDarkMode ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.1)",
       success: {
-        main: "#00B894",
-        light: "#55EFC4",
-        dark: "#00A187",
+        main: "#16A34A",
+        light: "#4ADE80",
+        dark: "#15803D",
         contrastText: "#FFFFFF",
       },
       error: {
-        main: "#FF7675",
-        light: "#FFB8B8",
-        dark: "#D63031",
+        main: "#DC2626",
+        light: "#F87171",
+        dark: "#991B1B",
         contrastText: "#FFFFFF",
       },
       warning: {
-        main: "#FFA502",
-        light: "#FFD43B",
-        dark: "#E67E22",
-        contrastText: "#FFFFFF",
+        main: "#D97706",
+        light: "#FBBF24",
+        dark: "#92400E",
+        contrastText: "#111111",
       },
       action: {
-        disabledBackground: "rgba(0,0,0,0.08)",
+        disabledBackground: finalDarkMode
+          ? "rgba(255,255,255,0.08)"
+          : "rgba(0,0,0,0.08)",
       },
     },
     typography: {
@@ -137,12 +160,19 @@ const getTheme = (
       MuiCard: {
         styleOverrides: {
           root: {
-            boxShadow: "0 2px 12px rgba(0,0,0,0.08)",
-            transition: "transform 0.2s, box-shadow 0.2s",
+            boxShadow: "none",
+            backgroundImage: "none",
+            transition: "background-color 0.16s, border-color 0.16s",
             "&:hover": {
-              transform: "translateY(-2px)",
-              boxShadow: "0 4px 16px rgba(0,0,0,0.12)",
+              boxShadow: "none",
             },
+          },
+        },
+      },
+      MuiPaper: {
+        styleOverrides: {
+          root: {
+            backgroundImage: "none",
           },
         },
       },
@@ -151,7 +181,7 @@ const getTheme = (
           root: {
             "& .MuiOutlinedInput-root": {
               backgroundColor: finalDarkMode
-                ? "rgba(255,255,255,0.05)"
+                ? "rgba(255,255,255,0.04)"
                 : "#ffffff",
             },
             "& .MuiInputBase-input": {
@@ -199,7 +229,7 @@ const getTheme = (
           body: {
             backgroundColor:
               customColors.background ||
-              (finalDarkMode ? "#1A1A1A" : "#f8f9fa"),
+              (finalDarkMode ? "#151515" : "#F7F7F7"),
           },
         },
       },
@@ -231,7 +261,7 @@ const defaultSettings: AppSettings = {
   selectedProvider: "google",
   selectedModel: "gemini-2.0-flash-exp",
   renameFiles: false,
-  accentColor: "#FF5733",
+  accentColor: DEFAULT_MONO_ACCENT_COLOR,
 };
 
 // Inner component that has access to workspace context
@@ -276,7 +306,7 @@ const AppContent: React.FC = () => {
   });
   const [accentColor, setAccentColor] = useState(() => {
     const savedColor = localStorage.getItem("accentColor");
-    return savedColor || "#FF5733";
+    return savedColor || DEFAULT_MONO_ACCENT_COLOR;
   });
   const [searchTerm, setSearchTerm] = useState("");
   const theme = useMemo(
@@ -486,6 +516,20 @@ const AppContent: React.FC = () => {
     setSettingsOpen(false);
   };
 
+  const handleModelChange = async (event: SelectChangeEvent<string>) => {
+    const newModel = event.target.value;
+    const result = (await window.electronAPI.loadSettings()) as SettingsResponse;
+    const currentSettings = result.settings || defaultSettings;
+    const { apiKeys = {}, renameFiles = false } = currentSettings;
+    await window.electronAPI.saveSettings({
+      apiKeys,
+      selectedProvider,
+      selectedModel: newModel,
+      renameFiles,
+    });
+    setSelectedModel(newModel);
+  };
+
   const handleDarkModeChange = (newDarkMode: boolean) => {
     setDarkMode(newDarkMode);
     localStorage.setItem("darkMode", String(newDarkMode));
@@ -579,393 +623,24 @@ const AppContent: React.FC = () => {
                 overflow: "hidden",
                 minHeight: 0,
                 background: effectiveDarkMode
-                  ? "linear-gradient(135deg, rgba(255,87,51,0.05) 0%, rgba(26,26,26,1) 100%)"
-                  : "linear-gradient(135deg, rgba(255,87,51,0.03) 0%, rgba(255,255,255,1) 100%)",
+                  ? "linear-gradient(180deg, #151515 0%, #1C1C1C 100%)"
+                  : "linear-gradient(180deg, #F7F7F7 0%, #EDEDED 100%)",
               }}
             >
-              <Box
-                sx={{
-                  p: { xs: 1, sm: 2 },
-                  borderBottom: "1px solid rgba(0,0,0,0.06)",
-                  backgroundColor: effectiveDarkMode
-                    ? "rgba(45,45,45,0.95)"
-                    : "rgba(255,255,255,0.95)",
-                  backdropFilter: "blur(12px)",
-                  flexShrink: 0,
-                  minWidth: 0,
-                  overflow: "hidden",
-                }}
-              >
-                <Box
-                  sx={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: { xs: 0.5, sm: 1 },
-                    minWidth: 0,
-                    width: "100%",
-                    overflow: "hidden",
-                  }}
-                >
-                  {/* AI Controls - Priority 1 (always visible) */}
-                  <Box
-                    sx={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: { xs: 0.25, sm: 0.5 },
-                      p: { xs: 0.25, sm: 0.5 },
-                      borderRadius: 1.5,
-                      backgroundColor: effectiveDarkMode
-                        ? "rgba(255,255,255,0.05)"
-                        : "rgba(0,0,0,0.02)",
-                      border: "1px solid",
-                      borderColor: effectiveDarkMode
-                        ? "rgba(255,255,255,0.1)"
-                        : "rgba(0,0,0,0.08)",
-                      flexShrink: 0,
-                      minWidth: 0,
-                    }}
-                  >
-                    <Box
-                      sx={{
-                        display: { xs: "none", md: "flex" },
-                        alignItems: "center",
-                        gap: 0.25,
-                        mr: 0.5,
-                      }}
-                    >
-                      <Box
-                        sx={{
-                          width: 4,
-                          height: 4,
-                          borderRadius: "50%",
-                          backgroundColor: "primary.main",
-                          boxShadow: "0 0 4px rgba(255,87,51,0.4)",
-                          flexShrink: 0,
-                        }}
-                      />
-                      <Box
-                        sx={{
-                          fontSize: "0.6rem",
-                          fontWeight: 600,
-                          color: "text.secondary",
-                          fontFamily: "var(--font-header)",
-                          textTransform: "uppercase",
-                          letterSpacing: "0.5px",
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        AI ENGINE
-                      </Box>
-                    </Box>
-
-                    {isLoading ? (
-                      <CircularProgress size={14} />
-                    ) : (
-                      <>
-                        <FormControl
-                          size="small"
-                          sx={{ minWidth: 90, maxWidth: 130 }}
-                        >
-                          <InputLabel sx={{ fontSize: "0.85rem" }}>
-                            Provider
-                          </InputLabel>
-                          <Select
-                            value={providerValue}
-                            label="Provider"
-                            onChange={handleProviderChange}
-                            sx={{
-                              minHeight: 40,
-                              "& .MuiSelect-select": {
-                                fontSize: "0.9rem",
-                                py: 0.75,
-                              },
-                            }}
-                          >
-                            <MenuItem
-                              value="ollama"
-                              disabled={!isOllamaAvailable}
-                              sx={{ fontSize: "0.65rem" }}
-                            >
-                              Ollama
-                            </MenuItem>
-                            <MenuItem
-                              value="lmstudio"
-                              sx={{ fontSize: "0.65rem" }}
-                            >
-                              LM Studio
-                            </MenuItem>
-                            <MenuItem
-                              value="openai"
-                              sx={{ fontSize: "0.65rem" }}
-                            >
-                              OpenAI
-                            </MenuItem>
-                            <MenuItem
-                              value="anthropic"
-                              sx={{ fontSize: "0.65rem" }}
-                            >
-                              Anthropic
-                            </MenuItem>
-                            <MenuItem
-                              value="google"
-                              sx={{ fontSize: "0.65rem" }}
-                            >
-                              Google
-                            </MenuItem>
-                            <MenuItem
-                              value="openrouter"
-                              sx={{ fontSize: "0.65rem" }}
-                            >
-                              OpenRouter
-                            </MenuItem>
-                          </Select>
-                        </FormControl>
-
-                        <FormControl
-                          size="small"
-                          sx={{ minWidth: 120, maxWidth: 180 }}
-                        >
-                          <InputLabel sx={{ fontSize: "0.85rem" }}>
-                            Model
-                          </InputLabel>
-                          <Select
-                            value={modelValue}
-                            label="Model"
-                            onChange={async (e) => {
-                              const newModel = e.target.value;
-                              const result =
-                                (await window.electronAPI.loadSettings()) as SettingsResponse;
-                              const currentSettings =
-                                result.settings || defaultSettings;
-                              const { apiKeys = {}, renameFiles = false } =
-                                currentSettings;
-                              await window.electronAPI.saveSettings({
-                                apiKeys,
-                                selectedProvider,
-                                selectedModel: newModel,
-                                renameFiles,
-                              });
-                              setSelectedModel(newModel);
-                            }}
-                            sx={{
-                              minHeight: 40,
-                              "& .MuiSelect-select": {
-                                fontSize: "0.9rem",
-                                py: 0.75,
-                                overflow: "hidden",
-                                textOverflow: "ellipsis",
-                              },
-                            }}
-                          >
-                            {models.map((model) => (
-                              <MenuItem
-                                key={model.name}
-                                value={model.name}
-                                sx={{ fontSize: "0.65rem" }}
-                              >
-                                {model.name}
-                              </MenuItem>
-                            ))}
-                          </Select>
-                        </FormControl>
-                      </>
-                    )}
-                  </Box>
-
-                  {/* Search - Priority 2 (flexible) */}
-                  <Box
-                    sx={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: { xs: 0.25, sm: 0.5 },
-                      p: { xs: 0.25, sm: 0.5 },
-                      borderRadius: 1.5,
-                      backgroundColor: effectiveDarkMode
-                        ? "rgba(255,255,255,0.05)"
-                        : "rgba(0,0,0,0.02)",
-                      border: "1px solid",
-                      borderColor: effectiveDarkMode
-                        ? "rgba(255,255,255,0.1)"
-                        : "rgba(0,0,0,0.08)",
-                      flex: 1,
-                      minWidth: 0,
-                      overflow: "hidden",
-                    }}
-                  >
-                    <SearchIcon
-                      sx={{
-                        fontSize: "0.75rem",
-                        color: "primary.main",
-                        flexShrink: 0,
-                        display: { xs: "none", sm: "block" },
-                      }}
-                    />
-                    <Box
-                      sx={{
-                        fontSize: "0.6rem",
-                        fontWeight: 600,
-                        color: "text.secondary",
-                        fontFamily: "var(--font-header)",
-                        textTransform: "uppercase",
-                        letterSpacing: "0.5px",
-                        whiteSpace: "nowrap",
-                        mr: 0.5,
-                        display: { xs: "none", lg: "block" },
-                      }}
-                    >
-                      SEARCH & FILTER
-                    </Box>
-
-                    <TextField
-                      size="small"
-                      placeholder="Search files and folders..."
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                      sx={{
-                        flex: 1,
-                        minWidth: 140,
-                        "& .MuiOutlinedInput-root": {
-                          backgroundColor: effectiveDarkMode
-                            ? "rgba(255,255,255,0.08)"
-                            : "rgba(255,255,255,0.8)",
-                          height: "40px", // Match the increased height of the Select components
-                        },
-                      }}
-                      InputProps={{
-                        sx: {
-                          height: "40px",
-                          "& input": {
-                            fontSize: "0.9rem",
-                            py: 0.9,
-                            height: "auto",
-                          },
-                        },
-                      }}
-                    />
-                  </Box>
-
-                  {/* Filters - Priority 3 (hide on small screens) */}
-                  <Box
-                    sx={{
-                      display: { xs: "none", lg: "flex" },
-                      alignItems: "center",
-                      gap: 0.5,
-                      p: 0.5,
-                      borderRadius: 1.5,
-                      backgroundColor: effectiveDarkMode
-                        ? "rgba(255,255,255,0.05)"
-                        : "rgba(0,0,0,0.02)",
-                      border: "1px solid",
-                      borderColor: effectiveDarkMode
-                        ? "rgba(255,255,255,0.1)"
-                        : "rgba(0,0,0,0.08)",
-                      flexShrink: 0,
-                    }}
-                  >
-                    <FormControl
-                      size="small"
-                      sx={{ minWidth: 50, maxWidth: 60 }}
-                    >
-                      <InputLabel sx={{ fontSize: "0.6rem" }}>Type</InputLabel>
-                      <Select
-                        value={filters.type}
-                        label="Type"
-                        onChange={(e) =>
-                          setFilters({ ...filters, type: e.target.value })
-                        }
-                        sx={{
-                          "& .MuiSelect-select": {
-                            fontSize: "0.6rem",
-                            py: 0.25,
-                          },
-                        }}
-                      >
-                        <MenuItem value="any" sx={{ fontSize: "0.6rem" }}>
-                          Any
-                        </MenuItem>
-                        <MenuItem value="files" sx={{ fontSize: "0.6rem" }}>
-                          Files
-                        </MenuItem>
-                        <MenuItem value="folders" sx={{ fontSize: "0.6rem" }}>
-                          Folders
-                        </MenuItem>
-                      </Select>
-                    </FormControl>
-
-                    <FormControl
-                      size="small"
-                      sx={{ minWidth: 50, maxWidth: 60 }}
-                    >
-                      <InputLabel sx={{ fontSize: "0.6rem" }}>Date</InputLabel>
-                      <Select
-                        value={filters.date}
-                        label="Date"
-                        onChange={(e) =>
-                          setFilters({ ...filters, date: e.target.value })
-                        }
-                        sx={{
-                          "& .MuiSelect-select": {
-                            fontSize: "0.6rem",
-                            py: 0.25,
-                          },
-                        }}
-                      >
-                        <MenuItem value="any" sx={{ fontSize: "0.6rem" }}>
-                          Any
-                        </MenuItem>
-                        <MenuItem value="24h" sx={{ fontSize: "0.6rem" }}>
-                          24h
-                        </MenuItem>
-                        <MenuItem value="7d" sx={{ fontSize: "0.6rem" }}>
-                          7d
-                        </MenuItem>
-                        <MenuItem value="30d" sx={{ fontSize: "0.6rem" }}>
-                          30d
-                        </MenuItem>
-                        <MenuItem value="year" sx={{ fontSize: "0.6rem" }}>
-                          Year
-                        </MenuItem>
-                      </Select>
-                    </FormControl>
-
-                    <FormControl
-                      size="small"
-                      sx={{ minWidth: 50, maxWidth: 60 }}
-                    >
-                      <InputLabel sx={{ fontSize: "0.6rem" }}>Size</InputLabel>
-                      <Select
-                        value={filters.size}
-                        label="Size"
-                        onChange={(e) =>
-                          setFilters({ ...filters, size: e.target.value })
-                        }
-                        sx={{
-                          "& .MuiSelect-select": {
-                            fontSize: "0.6rem",
-                            py: 0.25,
-                          },
-                        }}
-                      >
-                        <MenuItem value="any" sx={{ fontSize: "0.6rem" }}>
-                          Any
-                        </MenuItem>
-                        <MenuItem value="lt1" sx={{ fontSize: "0.6rem" }}>
-                          &lt;1MB
-                        </MenuItem>
-                        <MenuItem value="1to10" sx={{ fontSize: "0.6rem" }}>
-                          1-10MB
-                        </MenuItem>
-                        <MenuItem value="10to100" sx={{ fontSize: "0.6rem" }}>
-                          10-100MB
-                        </MenuItem>
-                        <MenuItem value=">100" sx={{ fontSize: "0.6rem" }}>
-                          &gt;100MB
-                        </MenuItem>
-                      </Select>
-                    </FormControl>
-                  </Box>
-                </Box>
-              </Box>
+              <AppCommandBar
+                effectiveDarkMode={effectiveDarkMode}
+                isLoading={isLoading}
+                isOllamaAvailable={isOllamaAvailable}
+                providerValue={providerValue}
+                modelValue={modelValue}
+                models={models}
+                searchTerm={searchTerm}
+                filters={filters}
+                onProviderChange={handleProviderChange}
+                onModelChange={handleModelChange}
+                onSearchTermChange={setSearchTerm}
+                onFiltersChange={setFilters}
+              />
               <Box
                 sx={{
                   flex: 1,

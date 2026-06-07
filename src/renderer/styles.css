@@ -29,9 +29,9 @@
     --border-radius-large: 8px;
     --border-radius-lg: 12px;
     --border-radius: var(--border-radius-medium);
-    --shadow-small: 0 1px 3px rgba(0, 0, 0, 0.1);
-    --shadow-medium: 0 4px 6px rgba(0, 0, 0, 0.1);
-    --shadow-large: 0 10px 25px rgba(0, 0, 0, 0.15);
+    --shadow-small: 0 1px 3px rgba(0, 0, 0, 0.08);
+    --shadow-medium: 0 8px 22px rgba(0, 0, 0, 0.12);
+    --shadow-large: 0 18px 42px rgba(0, 0, 0, 0.18);
     --transition-fast: 0.15s ease;
     --transition-medium: 0.25s ease;
     --transition-slow: 0.35s ease;
@@ -127,46 +127,52 @@ body {
 /* Enhanced button styles */
 .enhanced-button {
     border-radius: var(--border-radius-medium) !important;
-    box-shadow: var(--shadow-small) !important;
-    transition: all var(--transition-fast) !important;
+    box-shadow: none !important;
+    transition:
+        background-color var(--transition-fast),
+        border-color var(--transition-fast),
+        color var(--transition-fast) !important;
     font-weight: var(--font-weight-medium) !important;
 }
 
 .enhanced-button:hover {
-    transform: translateY(-1px) !important;
-    box-shadow: var(--shadow-medium) !important;
+    box-shadow: none !important;
 }
 
 .enhanced-button:active {
-    transform: translateY(0) !important;
-    box-shadow: var(--shadow-small) !important;
+    box-shadow: none !important;
 }
 
 /* Enhanced card styles */
 .enhanced-card {
     border-radius: var(--border-radius-large) !important;
-    box-shadow: var(--shadow-small) !important;
-    transition: all var(--transition-medium) !important;
-    border: 1px solid rgba(0, 0, 0, 0.06) !important;
+    box-shadow: none !important;
+    transition:
+        background-color var(--transition-fast),
+        border-color var(--transition-fast),
+        color var(--transition-fast) !important;
+    border: 1px solid transparent !important;
 }
 
 .enhanced-card:hover {
-    box-shadow: var(--shadow-medium) !important;
-    transform: translateY(-2px) !important;
+    box-shadow: none !important;
+    border-color: var(--mui-palette-divider, rgba(0, 0, 0, 0.12)) !important;
 }
 
 /* Enhanced input styles */
 .enhanced-input .MuiOutlinedInput-root {
     border-radius: var(--border-radius-medium) !important;
-    transition: all var(--transition-fast) !important;
+    transition:
+        border-color var(--transition-fast),
+        background-color var(--transition-fast) !important;
 }
 
 .enhanced-input .MuiOutlinedInput-root:hover {
-    box-shadow: var(--shadow-small) !important;
+    box-shadow: none !important;
 }
 
 .enhanced-input .MuiOutlinedInput-root.Mui-focused {
-    box-shadow: var(--shadow-medium) !important;
+    box-shadow: none !important;
 }
 
 /* Enhanced icon button styles */
@@ -177,7 +183,6 @@ body {
 
 .enhanced-icon-button:hover {
     background-color: rgba(0, 0, 0, 0.04) !important;
-    transform: scale(1.05) !important;
 }
 
 /* Typography classes */
@@ -336,25 +341,16 @@ body {
 /* Visual separator styles */
 .visual-separator {
     height: 1px;
-    background: linear-gradient(
-        90deg,
-        transparent,
-        rgba(0, 0, 0, 0.1),
-        transparent
-    );
+    background: rgba(0, 0, 0, 0.1);
     margin: 16px 0;
 }
 
 /* Enhanced header section */
 .header-section {
-    background: linear-gradient(
-        135deg,
-        rgba(255, 255, 255, 0.05),
-        rgba(255, 255, 255, 0.02)
-    );
-    border-radius: var(--border-radius-lg);
+    background: transparent;
+    border-radius: var(--border-radius-large);
     border: 1px solid rgba(255, 255, 255, 0.1);
-    backdrop-filter: blur(10px);
+    backdrop-filter: none;
 }
 
 /* Compact form controls */

@@ -121,7 +121,11 @@ const BatchProgressDialog: React.FC<BatchProgressDialogProps> = ({
       PaperProps={{
         tabIndex: -1,
         sx: {
-          borderRadius: 2,
+          borderRadius: 1,
+          boxShadow: 'none',
+          border: '1px solid',
+          borderColor: 'divider',
+          backgroundImage: 'none',
         },
       }}
     >
@@ -130,7 +134,9 @@ const BatchProgressDialog: React.FC<BatchProgressDialogProps> = ({
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          pb: 1,
+          p: 2,
+          borderBottom: '1px solid',
+          borderColor: 'divider',
         }}
       >
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -242,7 +248,7 @@ const BatchProgressDialog: React.FC<BatchProgressDialogProps> = ({
       </DialogContent>
 
       {!showCancelConfirm && (
-        <DialogActions sx={{ px: 3, pb: 2, gap: 1 }}>
+        <DialogActions sx={{ p: 2, gap: 1, borderTop: '1px solid', borderColor: 'divider' }}>
           {!isCancelledState && (
             <>
               {isPausedState ? (

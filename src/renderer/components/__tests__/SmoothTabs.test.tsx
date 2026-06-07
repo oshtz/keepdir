@@ -2,6 +2,7 @@ import React from 'react';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import '@testing-library/jest-dom';
+import { ThemeProvider, createTheme } from '@mui/material/styles';
 import SmoothTabs from '../SmoothTabs';
 
 // Mock framer-motion
@@ -18,6 +19,14 @@ jest.mock('framer-motion', () => ({
 }));
 
 describe('SmoothTabs', () => {
+  const monoTheme = createTheme({
+    palette: {
+      primary: {
+        main: '#525252',
+        contrastText: '#FFFFFF',
+      },
+    },
+  });
   const mockTabs = [
     {
       id: 'tab1',
@@ -209,13 +218,21 @@ describe('SmoothTabs', () => {
   });
 
   it('applies correct color styling for active tab in different variants', () => {
-    const { rerender } = render(<SmoothTabs {...defaultProps} variant="underline" />);
+    const { rerender } = render(
+      <ThemeProvider theme={monoTheme}>
+        <SmoothTabs {...defaultProps} variant="underline" />
+      </ThemeProvider>
+    );
     
     const firstTab = screen.getByText('First Tab');
-    expect(firstTab).toHaveStyle({ color: 'rgb(255, 87, 51)' });
+    expect(firstTab).toHaveStyle({ color: 'rgb(82, 82, 82)' });
     
     // Test background variant
-    rerender(<SmoothTabs {...defaultProps} variant="background" />);
+    rerender(
+      <ThemeProvider theme={monoTheme}>
+        <SmoothTabs {...defaultProps} variant="background" />
+      </ThemeProvider>
+    );
     const firstTabBackground = screen.getByText('First Tab');
     expect(firstTabBackground).toHaveStyle({ color: 'rgb(255, 255, 255)' });
   });

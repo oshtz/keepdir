@@ -286,20 +286,23 @@ const SortSuggestions: React.FC<SortSuggestionsProps> = ({
       PaperProps={{
         tabIndex: -1,
         sx: {
-          borderRadius: 1.5,
+          borderRadius: 1,
           background: theme.palette.background.default,
+          boxShadow: 'none',
+          border: `1px solid ${theme.palette.divider}`,
+          backgroundImage: 'none',
         }
       }}
     >
       <DialogTitle
         sx={{
-          background: `linear-gradient(135deg, ${theme.palette.primary.main} 0%, ${theme.palette.primary.dark} 100%)`,
-          color: theme.palette.primary.contrastText,
-          borderRadius: 'var(--border-radius-medium) var(--border-radius-medium) 0 0',
+          backgroundColor: theme.palette.background.default,
+          color: theme.palette.text.primary,
+          borderBottom: `1px solid ${theme.palette.divider}`,
         }}
       >
         <Box display="flex" alignItems="center">
-          <AccountTreeIcon sx={{ mr: 1.5, fontSize: 28 }} />
+          <AccountTreeIcon sx={{ mr: 1.5, fontSize: 24, color: theme.palette.text.secondary }} />
           <Typography variant="h6" component="div" sx={{ flexGrow: 1, fontFamily: 'var(--font-header)', fontWeight: 600 }}>
             Organization Suggestions
           </Typography>
@@ -308,10 +311,10 @@ const SortSuggestions: React.FC<SortSuggestionsProps> = ({
               onClick={onRefresh}
               size="small"
               sx={{
-                color: 'inherit',
+                color: theme.palette.text.secondary,
                 mr: 1,
                 '&:hover': {
-                  backgroundColor: 'rgba(255, 255, 255, 0.1)',
+                  backgroundColor: theme.palette.action.hover,
                 },
                 animation: loading ? 'spin 1s linear infinite' : 'none',
                 '@keyframes spin': {
@@ -329,7 +332,7 @@ const SortSuggestions: React.FC<SortSuggestionsProps> = ({
               <RefreshIcon />
             </IconButton>
           )}
-          <IconButton onClick={onClose} size="small" sx={{ color: 'inherit' }}>
+          <IconButton onClick={onClose} size="small" sx={{ color: theme.palette.text.secondary }}>
             <CloseIcon />
           </IconButton>
         </Box>
@@ -375,18 +378,28 @@ const SortSuggestions: React.FC<SortSuggestionsProps> = ({
               mb: 2,
               p: 1.5,
               backgroundColor: theme.palette.mode === 'dark'
-                ? `${theme.palette.primary.main}15`
-                : `${theme.palette.primary.main}10`,
-              borderRadius: 1.5,
-              border: `1px solid ${theme.palette.primary.main}30`
+                ? theme.palette.action.selected
+                : theme.palette.action.hover,
+              borderRadius: 1,
             }}>
               <Box sx={{ display: 'flex', alignItems: 'center' }}>
                 <OrganizeIcon sx={{ color: theme.palette.primary.main, mr: 1, fontSize: 20 }} />
-                <Typography variant="body2" sx={{ fontFamily: 'var(--font-body)', color: theme.palette.text.primary }}>
-                  Proposed directory structure ({selectedFiles.size} of {allFiles.length} files selected)
-                </Typography>
+                <Box>
+                  <Typography variant="body2" sx={{ fontFamily: 'var(--font-header)', color: theme.palette.text.primary, fontWeight: 700 }}>
+                    Proposed directory structure ({selectedFiles.size} of {allFiles.length} files selected)
+                  </Typography>
+                  <Typography variant="caption" sx={{ fontFamily: 'var(--font-body)', color: theme.palette.text.secondary }}>
+                    Review the plan first. Files move only after Apply Organization.
+                  </Typography>
+                </Box>
               </Box>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Chip
+                  label={`${groupedCategories.length} categories`}
+                  size="small"
+                  variant="outlined"
+                  sx={{ fontFamily: 'var(--font-body)' }}
+                />
                 <FormControlLabel
                   control={
                     <Checkbox
@@ -426,9 +439,9 @@ const SortSuggestions: React.FC<SortSuggestionsProps> = ({
             <Box sx={{
               maxHeight: '55vh',
               overflow: 'auto',
-              border: `1px solid ${theme.palette.primary.main}20`,
-              borderRadius: 1.5,
-              backgroundColor: theme.palette.background.paper,
+              border: `1px solid ${theme.palette.divider}`,
+              borderRadius: 1,
+              backgroundColor: 'transparent',
               '&::-webkit-scrollbar': {
                 width: '6px',
               },
@@ -518,10 +531,10 @@ const SortSuggestions: React.FC<SortSuggestionsProps> = ({
         )}
       </DialogContent>
       <DialogActions sx={{
-        p: 3,
-        backgroundColor: theme.palette.mode === 'dark'
-          ? theme.palette.background.paper
-          : `${theme.palette.background.default}CC`
+        p: 2,
+        gap: 1,
+        backgroundColor: theme.palette.background.default,
+        borderTop: `1px solid ${theme.palette.divider}`
       }}>
         <Button
           onClick={onClose}
@@ -542,14 +555,12 @@ const SortSuggestions: React.FC<SortSuggestionsProps> = ({
           startIcon={<OrganizeIcon />}
           sx={{
             fontFamily: 'var(--font-header)',
-            background: `linear-gradient(135deg, ${theme.palette.primary.main} 0%, ${theme.palette.primary.dark} 100%)`,
             borderRadius: 1.5,
             px: 3,
             py: 1,
+            boxShadow: 'none',
             '&:hover': {
-              background: `linear-gradient(135deg, ${theme.palette.primary.dark} 0%, ${theme.palette.primary.dark} 100%)`,
-              transform: 'translateY(-1px)',
-              boxShadow: theme.shadows[8]
+              boxShadow: 'none'
             },
             '&:disabled': {
               background: theme.palette.action.disabledBackground,

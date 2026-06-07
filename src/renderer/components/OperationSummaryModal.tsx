@@ -83,13 +83,6 @@ const OperationSummaryModal: React.FC<OperationSummaryModalProps> = ({
     return 'Operations completed.';
   };
 
-  const getStatusColor = () => {
-    if (isFullSuccess) return 'success.light';
-    if (isPartialSuccess) return 'warning.light';
-    if (hasFailures) return 'error.light';
-    return 'success.light';
-  };
-
   const statItems = [
     { 
       label: 'Renamed', 
@@ -137,16 +130,21 @@ const OperationSummaryModal: React.FC<OperationSummaryModalProps> = ({
       PaperProps={{
         tabIndex: -1,
         sx: {
-          borderRadius: 1.5,
-          overflow: 'hidden'
+          borderRadius: 1,
+          overflow: 'hidden',
+          boxShadow: 'none',
+          border: '1px solid',
+          borderColor: 'divider',
+          backgroundImage: 'none'
         }
       }}
     >
       <DialogTitle
         sx={{
           p: 2,
-          background: `linear-gradient(135deg, ${isFullSuccess ? 'rgba(0,184,148,0.1)' : isPartialSuccess ? 'rgba(255,152,0,0.1)' : 'rgba(255,118,117,0.1)'} 0%, rgba(255,255,255,1) 100%)`,
-          borderBottom: '1px solid rgba(0,0,0,0.06)'
+          backgroundColor: 'background.default',
+          borderBottom: '1px solid',
+          borderColor: 'divider'
         }}
       >
         <Box display="flex" alignItems="center">
@@ -168,7 +166,7 @@ const OperationSummaryModal: React.FC<OperationSummaryModalProps> = ({
             sx={{
               color: 'text.secondary',
               '&:hover': {
-                backgroundColor: 'rgba(0,0,0,0.04)',
+                backgroundColor: 'action.hover',
                 color: 'text.primary'
               }
             }}
@@ -187,8 +185,9 @@ const OperationSummaryModal: React.FC<OperationSummaryModalProps> = ({
             alignItems: 'center',
             py: 3,
             mb: 3,
-            backgroundColor: getStatusColor(),
-            borderRadius: 1.5
+            backgroundColor: 'transparent',
+            borderBottom: '1px solid',
+            borderColor: 'divider'
           }}
         >
           {getStatusIcon()}
@@ -237,11 +236,10 @@ const OperationSummaryModal: React.FC<OperationSummaryModalProps> = ({
               key={index}
               sx={{
                 p: 2,
-                borderRadius: 1.5,
-                border: '1px solid',
+                borderBottom: '1px solid',
                 borderColor: 'divider',
                 textAlign: 'center',
-                backgroundColor: 'background.paper'
+                backgroundColor: 'transparent'
               }}
             >
               <Box
@@ -282,8 +280,8 @@ const OperationSummaryModal: React.FC<OperationSummaryModalProps> = ({
             justifyContent: 'space-between',
             alignItems: 'center',
             p: 2,
-            backgroundColor: 'background.default',
-            borderRadius: 1.5,
+            backgroundColor: 'action.hover',
+            borderRadius: 1,
             mb: 2
           }}
         >
@@ -322,7 +320,7 @@ const OperationSummaryModal: React.FC<OperationSummaryModalProps> = ({
                   overflow: 'auto',
                   border: '1px solid',
                   borderColor: 'divider',
-                  borderRadius: 1.5,
+                  borderRadius: 1,
                   mt: 1,
                   '&::-webkit-scrollbar': {
                     width: '6px'
@@ -395,7 +393,7 @@ const OperationSummaryModal: React.FC<OperationSummaryModalProps> = ({
         )}
       </DialogContent>
 
-      <DialogActions sx={{ p: 3, gap: 1.5, borderTop: '1px solid', borderColor: 'divider' }}>
+      <DialogActions sx={{ p: 2, gap: 1, borderTop: '1px solid', borderColor: 'divider' }}>
         {onExport && (
           <Button
             onClick={onExport}

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Box, Typography } from '@mui/material';
+import { Box, Typography, useTheme } from '@mui/material';
 
 interface Tab {
   id: string;
@@ -21,6 +21,7 @@ const SmoothTabs: React.FC<SmoothTabsProps> = ({
   activeTab,
   variant = 'underline'
 }) => {
+  const theme = useTheme();
   const [selectedTab, setSelectedTab] = useState(activeTab || tabs[0]?.id);
 
   const handleTabClick = (tabId: string) => {
@@ -59,7 +60,9 @@ const SmoothTabs: React.FC<SmoothTabsProps> = ({
             display: 'flex',
             gap: '8px',
             padding: '4px',
-            backgroundColor: 'rgba(255,87,51,0.05)',
+            backgroundColor: theme.palette.mode === 'dark'
+              ? 'rgba(255,255,255,0.05)'
+              : 'rgba(0,0,0,0.04)',
             borderRadius: 'var(--border-radius-medium)'
           },
           tab: {
@@ -71,7 +74,7 @@ const SmoothTabs: React.FC<SmoothTabsProps> = ({
             transition: 'color 0.2s ease'
           },
           indicator: {
-            backgroundColor: '#FF5733',
+            backgroundColor: theme.palette.primary.main,
             borderRadius: 'var(--border-radius-medium)'
           }
         };
@@ -91,7 +94,7 @@ const SmoothTabs: React.FC<SmoothTabsProps> = ({
           },
           indicator: {
             height: '2px',
-            backgroundColor: '#FF5733',
+            backgroundColor: theme.palette.primary.main,
             bottom: 0
           }
         };
@@ -115,7 +118,7 @@ const SmoothTabs: React.FC<SmoothTabsProps> = ({
                 fontFamily: 'var(--font-header)',
                 fontWeight: selectedTab === tab.id ? 600 : 400,
                 color: selectedTab === tab.id 
-                  ? (variant === 'background' ? 'white' : '#FF5733')
+                  ? (variant === 'background' ? theme.palette.primary.contrastText : 'primary.main')
                   : 'text.secondary',
                 position: 'relative',
                 zIndex: 2

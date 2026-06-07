@@ -23,6 +23,13 @@ import InputLabel from "@mui/material/InputLabel";
 import FormControl from "@mui/material/FormControl";
 import AddIcon from "@mui/icons-material/Add";
 import SmartToyIcon from "@mui/icons-material/SmartToy";
+import SettingsIcon from "@mui/icons-material/Settings";
+import WorkspacesIcon from "@mui/icons-material/Workspaces";
+import FolderIcon from "@mui/icons-material/Folder";
+import ExtensionIcon from "@mui/icons-material/Extension";
+import HistoryIcon from "@mui/icons-material/History";
+import RuleIcon from "@mui/icons-material/Rule";
+import SystemUpdateAltIcon from "@mui/icons-material/SystemUpdateAlt";
 import { useWorkspace } from "../contexts/WorkspaceContext";
 import SettingsSidepanel from "./SettingsSidepanel";
 import KeyboardIcon from "@mui/icons-material/Keyboard";
@@ -65,6 +72,22 @@ const defaultSettings: Settings = {
   selectedModel: undefined,
   renameFiles: false,
 };
+
+const ACCENT_COLORS = [
+  "#525252",
+  "#FF5733",
+  "#E74C3C",
+  "#9B59B6",
+  "#3498DB",
+  "#1ABC9C",
+  "#2ECC71",
+  "#F39C12",
+  "#E67E22",
+  "#34495E",
+  "#95A5A6",
+  "#FF6B9D",
+  "#4ECDC4",
+];
 
 interface SettingsResponse {
   settings?: Settings;
@@ -400,9 +423,319 @@ const Settings: React.FC<SettingsProps> = ({
     }
   };
 
+  const createWorkspaceTheme = (overrides: Partial<{
+    accentColor: string;
+    darkMode: boolean;
+    customColors: Record<string, string>;
+  }> = {}) => ({
+    name: `${currentWorkspace?.name || "Workspace"} Theme`,
+    accentColor: workspaceTheme?.accentColor || accentColor,
+    darkMode: workspaceTheme?.darkMode ?? darkMode,
+    customColors: workspaceTheme?.customColors || {},
+    ...overrides,
+  });
+
+  const renderAccentColorRow = ({
+    testId,
+    selectedColor,
+    onSelect,
+    disabled = false,
+    labelPrefix,
+  }: {
+    testId: string;
+    selectedColor: string;
+    onSelect: (color: string) => void;
+    disabled?: boolean;
+    labelPrefix: string;
+  }) => (
+    <Box
+      data-testid={testId}
+      data-density="compact"
+      sx={{
+        display: "flex",
+        flexWrap: "wrap",
+        gap: 0.75,
+        alignItems: "center",
+        opacity: disabled ? 0.55 : 1,
+      }}
+    >
+      {ACCENT_COLORS.map((color) => {
+        const selected = selectedColor === color;
+
+        return (
+          <Box
+            component="button"
+            type="button"
+            key={color}
+            aria-label={`${labelPrefix} ${color}`}
+            aria-pressed={selected}
+            disabled={disabled}
+            onClick={() => onSelect(color)}
+            sx={{
+              width: 24,
+              height: 24,
+              borderRadius: "50%",
+              backgroundColor: color,
+              cursor: disabled ? "not-allowed" : "pointer",
+              border: "2px solid",
+              borderColor: selected ? "text.primary" : "divider",
+              boxShadow: selected ? "inset 0 0 0 3px rgba(255,255,255,0.56)" : "none",
+              padding: 0,
+              outline: "none",
+              transition: "border-color 0.16s ease, opacity 0.16s ease",
+              "&:hover": {
+                borderColor: disabled ? "divider" : "text.primary",
+              },
+              "&:focus-visible": {
+                outline: "2px solid",
+                outlineColor: "primary.main",
+                outlineOffset: 2,
+              },
+            }}
+          />
+        );
+      })}
+    </Box>
+  );
+
+  const renderAppearanceTab = () => (
+    <Box>
+      <Typography
+        variant="h6"
+        gutterBottom
+        sx={{
+          mb: 2,
+          color: "text.primary",
+          fontFamily: "var(--font-header)",
+        }}
+      >
+        Appearance
+      </Typography>
+
+      <Box sx={{ display: "flex", flexDirection: "column", gap: 3, mb: 4 }}>
+        <Box>
+          <Typography
+            variant="subtitle2"
+            sx={{
+              mb: 0.5,
+              color: "text.primary",
+              fontFamily: "var(--font-header)",
+              fontWeight: 700,
+            }}
+          >
+            Global defaults
+          </Typography>
+          <Typography
+            variant="body2"
+            color="text.secondary"
+            sx={{ mb: 1.5, fontFamily: "var(--font-body)" }}
+          >
+            Used anywhere a workspace does not define its own appearance.
+          </Typography>
+          <FormControlLabel
+            control={
+              <Switch
+                checked={darkMode}
+                onChange={(e) => onDarkModeChange(e.target.checked)}
+                color="primary"
+              />
+            }
+            label={
+              <Typography sx={{ fontFamily: "var(--font-body)" }}>
+                Dark Mode
+              </Typography>
+            }
+          />
+          <Typography
+            variant="body2"
+            sx={{
+              mt: 1.5,
+              mb: 1,
+              fontFamily: "var(--font-body)",
+              color: "text.secondary",
+            }}
+          >
+            Accent Color
+          </Typography>
+          {renderAccentColorRow({
+            testId: "global-accent-color-row",
+            selectedColor: accentColor,
+            onSelect: onAccentColorChange,
+            labelPrefix: "Set accent color to",
+          })}
+        </Box>
+
+        <Box sx={{ pt: 3, borderTop: "1px solid", borderColor: "divider" }}>
+          <Typography
+            variant="subtitle2"
+            sx={{
+              mb: 0.5,
+              color: "text.primary",
+              fontFamily: "var(--font-header)",
+              fontWeight: 700,
+            }}
+          >
+            Workspace override
+          </Typography>
+          {currentWorkspace ? (
+            <>
+              <Typography
+                variant="body2"
+                color="text.secondary"
+                sx={{ mb: 1.5, fontFamily: "var(--font-body)" }}
+              >
+                Optional appearance just for "{currentWorkspace.name}".
+              </Typography>
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={workspaceTheme !== null}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setWorkspaceTheme(createWorkspaceTheme());
+                      } else {
+                        setWorkspaceTheme(null);
+                      }
+                    }}
+                    color="primary"
+                  />
+                }
+                label={
+                  <Typography sx={{ fontFamily: "var(--font-body)" }}>
+                    Use workspace-specific appearance
+                  </Typography>
+                }
+              />
+              {workspaceTheme && (
+                <Box
+                  sx={{
+                    mt: 1.5,
+                    pl: { xs: 0, sm: 4 },
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 1.5,
+                  }}
+                >
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={workspaceTheme.darkMode}
+                        onChange={(e) =>
+                          setWorkspaceTheme(
+                            createWorkspaceTheme({ darkMode: e.target.checked }),
+                          )
+                        }
+                        color="primary"
+                      />
+                    }
+                    label={
+                      <Typography sx={{ fontFamily: "var(--font-body)" }}>
+                        Workspace dark mode
+                      </Typography>
+                    }
+                  />
+                  <Box>
+                    <Typography
+                      variant="body2"
+                      sx={{
+                        mb: 1,
+                        fontFamily: "var(--font-body)",
+                        color: "text.secondary",
+                      }}
+                    >
+                      Workspace Accent Color
+                    </Typography>
+                    {renderAccentColorRow({
+                      testId: "workspace-accent-color-row",
+                      selectedColor: workspaceTheme.accentColor || accentColor,
+                      onSelect: (color) =>
+                        setWorkspaceTheme(
+                          createWorkspaceTheme({ accentColor: color }),
+                        ),
+                      labelPrefix: "Set workspace accent color to",
+                    })}
+                  </Box>
+                  <Box>
+                    <Button
+                      className="enhanced-button"
+                      variant="outlined"
+                      onClick={() => setWorkspaceTheme(null)}
+                      sx={{
+                        fontFamily: "var(--font-header)",
+                        borderRadius: 1.5,
+                        px: 2,
+                      }}
+                    >
+                      Reset to Global Theme
+                    </Button>
+                  </Box>
+                </Box>
+              )}
+            </>
+          ) : (
+            <Typography
+              variant="body2"
+              color="text.secondary"
+              sx={{ fontFamily: "var(--font-body)", fontStyle: "italic" }}
+            >
+              No workspace selected
+            </Typography>
+          )}
+        </Box>
+      </Box>
+
+      <Typography
+        variant="h6"
+        gutterBottom
+        sx={{
+          mb: 2,
+          color: "text.primary",
+          fontFamily: "var(--font-header)",
+        }}
+      >
+        Sidebar Sections
+      </Typography>
+      <Typography
+        variant="body2"
+        color="text.secondary"
+        sx={{ mb: 2, fontFamily: "var(--font-body)" }}
+      >
+        Choose which sections to display in the sidebar
+      </Typography>
+      <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+        {["workspaces", "recent", "favorites"].map((section) => (
+          <FormControlLabel
+            key={section}
+            control={
+              <Checkbox
+                size="small"
+                checked={sectionVisibility[section] !== false}
+                onChange={(e) =>
+                  setSectionVisibility(section, e.target.checked)
+                }
+                color="primary"
+              />
+            }
+            label={
+              <Typography sx={{ fontFamily: "var(--font-body)" }}>
+                {section.charAt(0).toUpperCase() + section.slice(1)}
+              </Typography>
+            }
+          />
+        ))}
+      </Box>
+    </Box>
+  );
+
   const renderTabContent = () => {
     switch (activeTab) {
       case "general":
+        return renderAppearanceTab();
+
+      case "themes":
+        return renderAppearanceTab();
+
+      case "legacy-general":
         return (
           <Box>
             <Typography
@@ -474,6 +807,7 @@ const Settings: React.FC<SettingsProps> = ({
                   }}
                 >
                   {[
+                    "#525252",
                     "#FF5733",
                     "#E74C3C",
                     "#9B59B6",
@@ -602,7 +936,7 @@ const Settings: React.FC<SettingsProps> = ({
           </Box>
         );
 
-      case "themes":
+      case "legacy-themes":
         return (
           <Box>
             <Typography
@@ -692,6 +1026,7 @@ const Settings: React.FC<SettingsProps> = ({
                         }}
                       >
                         {[
+                          "#525252",
                           "#FF5733",
                           "#E74C3C",
                           "#9B59B6",
@@ -1991,34 +2326,49 @@ const Settings: React.FC<SettingsProps> = ({
       maxWidth="lg"
       fullWidth
       PaperProps={{
+        "data-testid": "settings-dialog-shell",
+        "data-surface": "modal-sheet",
         tabIndex: -1,
         sx: {
-          borderRadius: 1.5,
+          borderRadius: 1,
           overflow: "hidden",
           maxHeight: "90vh",
+          boxShadow: "none",
+          border: "1px solid",
+          borderColor: "divider",
+          backgroundImage: "none",
         },
       }}
     >
       <DialogTitle
         sx={{
-          p: 2,
-          background:
-            "linear-gradient(135deg, rgba(255,87,51,0.03) 0%, rgba(255,255,255,1) 100%)",
-          borderBottom: "1px solid rgba(0,0,0,0.06)",
+          px: 2.5,
+          py: 1.75,
+          backgroundColor: "background.default",
+          borderBottom: "1px solid",
+          borderColor: "divider",
         }}
       >
         <Box display="flex" alignItems="center">
-          <Typography
-            variant="h5"
-            component="div"
-            sx={{
-              flexGrow: 1,
-              fontWeight: 600,
-              fontFamily: "var(--font-header)",
-            }}
-          >
-            Settings
-          </Typography>
+          <Box sx={{ flexGrow: 1, minWidth: 0 }}>
+            <Typography
+              variant="h5"
+              component="div"
+              sx={{
+                fontWeight: 700,
+                fontFamily: "var(--font-header)",
+              }}
+            >
+              Settings
+            </Typography>
+            <Typography
+              variant="body2"
+              color="text.secondary"
+              sx={{ fontFamily: "var(--font-body)" }}
+            >
+              Local workspace, AI provider, and safety preferences
+            </Typography>
+          </Box>
           <IconButton
             onClick={onClose}
             size="small"
@@ -2026,7 +2376,7 @@ const Settings: React.FC<SettingsProps> = ({
             sx={{
               color: "text.secondary",
               "&:hover": {
-                backgroundColor: "rgba(0,0,0,0.04)",
+                backgroundColor: "action.hover",
                 color: "text.primary",
               },
             }}
@@ -2049,16 +2399,15 @@ const Settings: React.FC<SettingsProps> = ({
           activeTab={activeTab}
           onTabChange={setActiveTab}
           tabs={[
-            { id: "general", label: "General", icon: null },
-            { id: "themes", label: "Workspace Themes", icon: null },
-            { id: "workspace", label: "Workspace", icon: null },
-            { id: "watch-folders", label: "Watch Folders", icon: null },
-            { id: "sections", label: "Custom Sections", icon: null },
-            { id: "history", label: "Operation History", icon: null },
-            { id: "airules", label: "AI Rules & Presets", icon: null },
-            { id: "providers", label: "AI Providers", icon: null },
-            { id: "shortcuts", label: "Keyboard Shortcuts", icon: null },
-            { id: "about", label: "About & Updates", icon: null },
+            { id: "general", label: "General", icon: <SettingsIcon /> },
+            { id: "workspace", label: "Workspace", icon: <WorkspacesIcon /> },
+            { id: "watch-folders", label: "Watch Folders", icon: <FolderIcon /> },
+            { id: "sections", label: "Custom Sections", icon: <ExtensionIcon /> },
+            { id: "history", label: "Operation History", icon: <HistoryIcon /> },
+            { id: "airules", label: "AI Rules & Presets", icon: <RuleIcon /> },
+            { id: "providers", label: "AI Providers", icon: <SmartToyIcon /> },
+            { id: "shortcuts", label: "Keyboard Shortcuts", icon: <KeyboardIcon /> },
+            { id: "about", label: "About & Updates", icon: <SystemUpdateAltIcon /> },
           ]}
         />
 
@@ -2128,7 +2477,15 @@ const Settings: React.FC<SettingsProps> = ({
         )}
       </DialogContent>
 
-      <DialogActions sx={{ p: 3, gap: 1.5 }}>
+      <DialogActions
+        sx={{
+          p: 2,
+          gap: 1,
+          borderTop: "1px solid",
+          borderColor: "divider",
+          backgroundColor: "background.default",
+        }}
+      >
         <Button
           className="enhanced-button"
           onClick={onClose}
@@ -2139,8 +2496,7 @@ const Settings: React.FC<SettingsProps> = ({
             borderRadius: 1.5,
             px: 3,
             "&:hover": {
-              backgroundColor: "rgba(0,0,0,0.04)",
-              transform: "translateY(-1px)",
+              backgroundColor: "action.hover",
             },
           }}
         >
@@ -2169,9 +2525,25 @@ const Settings: React.FC<SettingsProps> = ({
         open={deleteDialogOpen}
         onClose={handleCloseDeleteDialog}
         aria-labelledby="delete-ollama-model-title"
-        PaperProps={{ tabIndex: -1 }}
+        PaperProps={{
+          tabIndex: -1,
+          sx: {
+            borderRadius: 1,
+            boxShadow: "none",
+            border: "1px solid",
+            borderColor: "divider",
+            backgroundImage: "none",
+          },
+        }}
       >
-        <DialogTitle id="delete-ollama-model-title" sx={{ fontFamily: "var(--font-header)" }}>
+        <DialogTitle
+          id="delete-ollama-model-title"
+          sx={{
+            fontFamily: "var(--font-header)",
+            borderBottom: "1px solid",
+            borderColor: "divider",
+          }}
+        >
           Delete Model
         </DialogTitle>
         <DialogContent>

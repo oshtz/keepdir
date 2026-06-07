@@ -221,6 +221,15 @@ describe('Sidebar Component', () => {
       
       expect(screen.getByTestId('model-management')).toBeInTheDocument();
     });
+
+    it('should render the selected model as an inline sidebar summary', () => {
+      renderSidebar();
+
+      expect(screen.getByTestId('sidebar-model-summary')).toHaveAttribute(
+        'data-surface',
+        'inline-summary'
+      );
+    });
   });
 
   describe('Workspace Management', () => {

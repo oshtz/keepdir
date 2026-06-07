@@ -411,11 +411,10 @@ const Sidebar: React.FC<SidebarProps> = ({
               animate={{ opacity: 1, scale: 1 }}
               transition={{ delay: folderIndex * 0.05 }}
               whileHover={{
-                scale: 1.05,
-                y: -2,
+                scale: 1.01,
                 transition: { duration: 0.2 },
               }}
-              whileTap={{ scale: 0.95 }}
+              whileTap={{ scale: 0.98 }}
             >
               <AnimatedCard
                 animationType="hover"
@@ -446,7 +445,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                   }}
                 >
                   <motion.div
-                    whileHover={{ rotate: 5 }}
+                    whileHover={{ rotate: 2 }}
                     transition={{ duration: 0.2 }}
                   >
                     <Typography
@@ -586,6 +585,22 @@ const Sidebar: React.FC<SidebarProps> = ({
                   key={workspace.id}
                   button
                   selected={workspace.id === currentWorkspace?.id}
+                  sx={{
+                    mx: 0.5,
+                    mb: 0.25,
+                    borderRadius: 1,
+                    py: 0.65,
+                    "&.Mui-selected": {
+                      backgroundColor: "action.selected",
+                      color: "text.primary",
+                    },
+                    "&.Mui-selected:hover": {
+                      backgroundColor: "action.hover",
+                    },
+                    "&:hover": {
+                      backgroundColor: "action.hover",
+                    },
+                  }}
                   onClick={() => handleWorkspaceClick(workspace)}
                   onDoubleClick={(e) =>
                     handleWorkspaceDoubleClick(workspace, e)
@@ -1179,14 +1194,13 @@ const Sidebar: React.FC<SidebarProps> = ({
 
           boxSizing: "border-box",
 
-          borderRight: "1px solid rgba(0, 0, 0, 0.12)",
+          borderRight: "1px solid",
+          borderColor: "divider",
 
           background: (theme) =>
-            theme.palette.mode === "dark"
-              ? "rgba(45, 45, 45, 0.9)"
-              : "rgba(255, 255, 255, 0.9)",
+            theme.palette.background.default,
 
-          backdropFilter: "blur(8px)",
+          backdropFilter: "none",
 
           overflow: "hidden",
 
@@ -1223,6 +1237,48 @@ const Sidebar: React.FC<SidebarProps> = ({
         }}
         onMouseDown={handleMouseDown}
       />
+
+      <Box
+        sx={{
+          px: 1.5,
+          pt: 1.5,
+          pb: 1,
+          borderBottom: "1px solid",
+          borderColor: effectiveDarkMode
+            ? "rgba(255,255,255,0.08)"
+            : "rgba(15,23,42,0.08)",
+          backgroundColor: "transparent",
+        }}
+      >
+        <Typography
+          variant="caption"
+          sx={{
+            display: "block",
+            color: "text.secondary",
+            fontFamily: "var(--font-header)",
+            fontWeight: 700,
+          }}
+        >
+          Workspace
+        </Typography>
+        <Box sx={{ display: "flex", alignItems: "center", gap: 1, minWidth: 0 }}>
+          <Typography sx={{ fontSize: "1.15rem", flexShrink: 0 }}>
+            {currentWorkspace?.emoji}
+          </Typography>
+          <Typography
+            variant="body2"
+            sx={{
+              fontFamily: "var(--font-header)",
+              fontWeight: 700,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {currentWorkspace ? "Active workspace" : "No active workspace"}
+          </Typography>
+        </Box>
+      </Box>
 
       <DndContext
         sensors={sensors}
@@ -1290,93 +1346,98 @@ const Sidebar: React.FC<SidebarProps> = ({
         </SortableContext>
       </DndContext>
 
-      <Divider />
-
-      {/* Model Management Section */}
-      <Box sx={{ p: { xs: 1, sm: 1.5 }, flexShrink: 0 }}>
+      {(selectedProvider || selectedModel) && (
         <Box
+          data-testid="sidebar-model-summary"
+          data-surface="inline-summary"
           sx={{
-            p: { xs: 1, sm: 1.5 },
-            borderRadius: 1.5,
-            backgroundColor: effectiveDarkMode
-              ? "rgba(255,255,255,0.05)"
-              : "rgba(0,0,0,0.02)",
-            border: "1px solid",
-            borderColor: effectiveDarkMode
-              ? "rgba(255,255,255,0.1)"
-              : "rgba(0,0,0,0.08)",
-            mb: { xs: 1, sm: 1.5 },
+            px: { xs: 1.25, sm: 1.5 },
+            py: { xs: 1, sm: 1.25 },
+            flexShrink: 0,
+            borderTop: "1px solid",
+            borderColor: "divider",
             minWidth: 0,
             overflow: "hidden",
           }}
         >
           <Box
             sx={{
-              display: "flex",
-              alignItems: "center",
-              gap: 0.5,
-              mb: 1,
               minWidth: 0,
+              display: "flex",
+              flexDirection: "column",
+              gap: 0.75,
             }}
           >
             <Box
               sx={{
-                width: { xs: 4, sm: 6 },
-                height: { xs: 4, sm: 6 },
-                borderRadius: "50%",
-                backgroundColor: "primary.main",
-                boxShadow: "0 0 6px rgba(255,87,51,0.4)",
-                flexShrink: 0,
-              }}
-            />
-            <Typography
-              variant="caption"
-              sx={{
-                fontSize: { xs: "0.6rem", sm: "0.7rem" },
-                fontWeight: 600,
-                color: "text.secondary",
-                fontFamily: "var(--font-header)",
-                textTransform: "uppercase",
-                letterSpacing: "0.5px",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
+                display: "flex",
+                alignItems: "center",
+                gap: 0.5,
+                minWidth: 0,
               }}
             >
-              Selected Model
-            </Typography>
+              <Box
+                sx={{
+                  width: { xs: 4, sm: 6 },
+                  height: { xs: 4, sm: 6 },
+                  borderRadius: "50%",
+                  backgroundColor: "primary.main",
+                  flexShrink: 0,
+                }}
+              />
+              <Typography
+                variant="caption"
+                sx={{
+                  fontSize: { xs: "0.6rem", sm: "0.7rem" },
+                  fontWeight: 600,
+                  color: "text.secondary",
+                  fontFamily: "var(--font-header)",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.5px",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                Selected Model
+              </Typography>
+            </Box>
+            <ModelManagement
+              selectedProvider={selectedProvider || ""}
+              selectedModel={selectedModel || ""}
+              onModelsLoaded={onModelsLoaded}
+              searchTerm=""
+              compact={true}
+            />
           </Box>
-          <ModelManagement
-            selectedProvider={selectedProvider || ""}
-            selectedModel={selectedModel || ""}
-            onModelsLoaded={onModelsLoaded}
-            searchTerm=""
-            compact={true}
-          />
         </Box>
-      </Box>
-
-      <Divider />
+      )}
 
       {/* Settings and Keyboard Shortcuts */}
-      <Box sx={{ p: { xs: 1, sm: 1.5 }, flexShrink: 0 }}>
+      <Box
+        sx={{
+          px: { xs: 1.25, sm: 1.5 },
+          py: { xs: 1, sm: 1.25 },
+          flexShrink: 0,
+          borderTop: "1px solid",
+          borderColor: "divider",
+        }}
+      >
         <ListItem
           button
           onClick={handleOpenSettings}
           sx={{
-            borderRadius: 1.5,
-            mx: { xs: 0.25, sm: 0.5 },
-            transition: "all 0.2s ease",
+            borderRadius: 1,
             py: { xs: 0.5, sm: 1 },
+            px: { xs: 0.75, sm: 1 },
+            transition: "background-color 0.16s ease, color 0.16s ease",
             "&:hover": {
-              backgroundColor: "primary.light",
-              transform: "translateX(4px)",
-              boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
+              backgroundColor: "action.hover",
             },
           }}
         >
           <ListItemIcon sx={{ minWidth: { xs: 28, sm: 36 } }}>
-            <SettingsIcon fontSize="small" sx={{ color: "primary.main" }} />
+            <SettingsIcon fontSize="small" sx={{ color: "text.secondary" }} />
           </ListItemIcon>
           <ListItemText
             primary="Settings"

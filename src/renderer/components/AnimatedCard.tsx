@@ -11,7 +11,7 @@ interface AnimatedCardProps extends CardProps {
 const AnimatedCard: React.FC<AnimatedCardProps> = ({
   children,
   animationType = 'hover',
-  glowColor = 'rgba(255, 87, 51, 0.3)',
+  glowColor: _glowColor = 'rgba(82, 82, 82, 0.28)',
   delay = 0,
   sx,
   ...props
@@ -21,9 +21,7 @@ const AnimatedCard: React.FC<AnimatedCardProps> = ({
       case 'tilt':
         return {
           whileHover: {
-            rotateX: 5,
-            rotateY: 5,
-            scale: 1.02,
+            scale: 1.01,
             transition: { duration: 0.3 }
           },
           style: {
@@ -34,45 +32,43 @@ const AnimatedCard: React.FC<AnimatedCardProps> = ({
       case 'glow':
         return {
           whileHover: {
-            scale: 1.02,
-            boxShadow: `0 10px 30px ${glowColor}`,
+            scale: 1.01,
             transition: { duration: 0.3 }
           },
-          initial: { opacity: 0, y: 20 },
+          initial: { opacity: 0, y: 8 },
           animate: { opacity: 1, y: 0 },
           transition: { delay, duration: 0.5 }
         };
       case 'slide':
         return {
           whileHover: {
-            y: -8,
+            y: -1,
             transition: { duration: 0.2 }
           },
-          initial: { opacity: 0, x: -20 },
+          initial: { opacity: 0, x: -8 },
           animate: { opacity: 1, x: 0 },
           transition: { delay, duration: 0.4 }
         };
       case 'scale':
         return {
           whileHover: {
-            scale: 1.05,
+            scale: 1.01,
             transition: { duration: 0.2 }
           },
           whileTap: {
             scale: 0.98
           },
-          initial: { opacity: 0, scale: 0.9 },
+          initial: { opacity: 0, scale: 0.98 },
           animate: { opacity: 1, scale: 1 },
           transition: { delay, duration: 0.3 }
         };
       default: // hover
         return {
           whileHover: {
-            y: -4,
-            boxShadow: '0 8px 25px rgba(0,0,0,0.15)',
+            y: -1,
             transition: { duration: 0.2 }
           },
-          initial: { opacity: 0, y: 20 },
+          initial: { opacity: 0, y: 8 },
           animate: { opacity: 1, y: 0 },
           transition: { delay, duration: 0.4 }
         };
@@ -85,6 +81,10 @@ const AnimatedCard: React.FC<AnimatedCardProps> = ({
         sx={{
           cursor: 'pointer',
           overflow: 'visible',
+          boxShadow: 'none',
+          border: '1px solid',
+          borderColor: 'divider',
+          backgroundImage: 'none',
           ...sx
         }}
         {...props}

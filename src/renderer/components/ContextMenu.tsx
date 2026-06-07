@@ -31,17 +31,28 @@ const ContextMenu: React.FC<ContextMenuProps> = ({
       anchorReference="anchorPosition"
       anchorPosition={{ top: position.y, left: position.x }}
       transformOrigin={{ vertical: 'top', horizontal: 'left' }}
+      transitionDuration={0}
       PaperProps={{
+        'data-testid': 'context-menu-overlay',
+        'data-surface': 'overlay-sheet',
         sx: {
-          borderRadius: 1.5,
+          borderRadius: 1,
           minWidth: 200,
-          boxShadow: '0 8px 32px rgba(0,0,0,0.12)',
+          boxShadow: 'none',
           border: '1px solid',
-          borderColor: 'divider',
+          borderColor: (theme) =>
+            theme.palette.mode === 'dark'
+              ? 'rgba(255,255,255,0.18)'
+              : 'rgba(0,0,0,0.18)',
+          backgroundColor: 'background.paper',
+          backgroundImage: 'none',
+          color: 'text.primary',
           '& .MuiMenuItem-root': {
-            borderRadius: 1.5,
-            mx: 0.5,
-            my: 0.25,
+            borderRadius: 1,
+            mx: 0.25,
+            my: 0,
+            minHeight: 34,
+            color: 'text.primary',
             '&:hover': {
               backgroundColor: 'action.hover'
             },
@@ -52,7 +63,7 @@ const ContextMenu: React.FC<ContextMenuProps> = ({
         }
       }}
       MenuListProps={{
-        sx: { py: 1 }
+        sx: { py: 0.5 }
       }}
     >
       {items.flatMap((item, index) => {
@@ -75,7 +86,7 @@ const ContextMenu: React.FC<ContextMenuProps> = ({
             }}
           >
             {item.icon && (
-              <ListItemIcon sx={{ minWidth: 36 }}>
+              <ListItemIcon sx={{ minWidth: 36, color: 'text.secondary' }}>
                 {item.icon}
               </ListItemIcon>
             )}
@@ -91,10 +102,8 @@ const ContextMenu: React.FC<ContextMenuProps> = ({
                   ml: 2,
                   px: 1,
                   py: 0.25,
-                  backgroundColor: 'background.default',
-                  border: '1px solid',
-                  borderColor: 'divider',
-                  borderRadius: 0.5,
+                  backgroundColor: 'action.hover',
+                  borderRadius: 0.75,
                   fontSize: '0.75rem',
                   fontFamily: 'monospace',
                   color: 'text.secondary'
