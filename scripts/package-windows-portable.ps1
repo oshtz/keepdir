@@ -17,7 +17,18 @@ if ($portableFile.Length -lt 1MB) {
   throw "Windows portable exe is unexpectedly small: $($portableFile.Length) bytes"
 }
 
-$hash = (Get-FileHash -LiteralPath $portableFile.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+$sha256 = [System.Security.Cryptography.SHA256]::Create()
+try {
+  $stream = [System.IO.File]::OpenRead($portableFile.FullName)
+  try {
+    $hashBytes = $sha256.ComputeHash($stream)
+  } finally {
+    $stream.Dispose()
+  }
+} finally {
+  $sha256.Dispose()
+}
+$hash = -join ($hashBytes | ForEach-Object { $_.ToString('x2') })
 $manifest = Join-Path $portableDir 'SHA256SUMS-windows.txt'
 "$hash  $($portableFile.Name)" | Set-Content -LiteralPath $manifest -Encoding ascii
 
