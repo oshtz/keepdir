@@ -68,13 +68,28 @@ try {
 
   $sourcePath = Join-Path $smokeRoot 'invoice.txt'
   [System.IO.File]::WriteAllText($sourcePath, 'smoke', [System.Text.Encoding]::ASCII)
-  Start-Sleep -Seconds 8
 
-  $saved = Get-Content -LiteralPath $storePath -Raw | ConvertFrom-Json
-  $actions = @($saved.ruleActions.PSObject.Properties['default'].Value)
-  $action = $actions | Where-Object { $_.originalName -eq 'invoice.txt' } | Select-Object -First 1
+  $deadline = (Get-Date).AddSeconds(30)
+  $action = $null
+  do {
+    if ($process.HasExited) {
+      $stdout = if (Test-Path -LiteralPath $stdoutPath) { Get-Content -LiteralPath $stdoutPath -Raw } else { '' }
+      $stderr = if (Test-Path -LiteralPath $stderrPath) { Get-Content -LiteralPath $stderrPath -Raw } else { '' }
+      throw "KeepDir exited during runtime smoke with code $($process.ExitCode).`nSTDOUT:`n$stdout`nSTDERR:`n$stderr"
+    }
+
+    $saved = Get-Content -LiteralPath $storePath -Raw | ConvertFrom-Json
+    $actions = @($saved.ruleActions.PSObject.Properties['default'].Value)
+    $action = $actions | Where-Object { $_.originalName -eq 'invoice.txt' } | Select-Object -First 1
+    if (!$action) {
+      Start-Sleep -Milliseconds 500
+    }
+  } while (!$action -and (Get-Date) -lt $deadline)
+
   if (!$action) {
-    throw 'Watcher did not create a rule action for invoice.txt.'
+    $stdout = if (Test-Path -LiteralPath $stdoutPath) { Get-Content -LiteralPath $stdoutPath -Raw } else { '' }
+    $stderr = if (Test-Path -LiteralPath $stderrPath) { Get-Content -LiteralPath $stderrPath -Raw } else { '' }
+    throw "Watcher did not create a rule action for invoice.txt.`nSTDOUT:`n$stdout`nSTDERR:`n$stderr"
   }
   if ($action.status -ne 'pending') {
     throw "Expected pending action, got $($action.status)."
