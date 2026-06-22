@@ -1,6 +1,6 @@
 {
   "name": "keepdir",
-  "version": "1.0.5",
+  "version": "0.1.0",
   "description": "keepdir Desktop Application",
   "scripts": {
     "start": "npm run dev",
@@ -16,8 +16,8 @@
     "dist:mac": "tauri build --bundles dmg",
     "typecheck": "tsc --noEmit --pretty false",
     "lint": "eslint . --cache --cache-location node_modules/.cache/eslint/",
-    "format": "prettier --write package.json package-lock.json tsconfig.json jest.config.js vite.config.ts eslint.config.mjs README.md .github/workflows/build.yml .github/workflows/tauri-release-test.yml",
-    "format:check": "prettier --check package.json package-lock.json tsconfig.json jest.config.js vite.config.ts eslint.config.mjs README.md .github/workflows/build.yml .github/workflows/tauri-release-test.yml",
+    "format": "prettier --write package.json package-lock.json tsconfig.json jest.config.js vite.config.ts eslint.config.mjs README.md .github/workflows/build.yml",
+    "format:check": "prettier --check package.json package-lock.json tsconfig.json jest.config.js vite.config.ts eslint.config.mjs README.md .github/workflows/build.yml",
     "check": "npm run format:check && npm run typecheck && npm run lint && npm run test:ci && npm run build",
     "audit:prod": "npm audit --omit=dev --audit-level=high",
     "rust:test": "cargo test --manifest-path src-tauri/Cargo.toml",
