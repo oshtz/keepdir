@@ -8,6 +8,8 @@ dist/
 out/
 build/
 release/
+src-tauri/gen/
+src-tauri/target/
 *.js.map
 
 CRUSH.md

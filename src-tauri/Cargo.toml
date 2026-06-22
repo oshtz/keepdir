@@ -1,0 +1,16 @@
+[package]
+name = "keepdir"
+version = "1.0.5"
+description = "KeepDir"
+authors = ["oshtz"]
+edition = "2021"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+keyring = "3"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tauri = { version = "2", features = ["tray-icon"] }
+tauri-plugin-dialog = "2.4.1"

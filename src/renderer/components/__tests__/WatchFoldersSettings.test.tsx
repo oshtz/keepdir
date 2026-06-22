@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event';
 import '@testing-library/jest-dom';
 import WatchFoldersSettings from '../WatchFoldersSettings';
 
-const mockElectronAPI = {
+const mockKeepDirAPI = {
   selectDirectory: jest.fn(),
   getWatchFolders: jest.fn(),
   saveWatchFolder: jest.fn(),
@@ -13,23 +13,31 @@ const mockElectronAPI = {
   onWatchFoldersChanged: jest.fn(),
 };
 
-Object.defineProperty(window, 'electronAPI', {
-  value: mockElectronAPI,
+Object.defineProperty(window, 'keepdirAPI', {
+  value: mockKeepDirAPI,
   writable: true,
 });
 
 describe('WatchFoldersSettings', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockElectronAPI.getWatchFolders.mockResolvedValue({
+    mockKeepDirAPI.getWatchFolders.mockResolvedValue({
       success: true,
-      folders: [{ id: 'watch-1', path: 'C:/Downloads', enabled: true, createdAt: '2026-06-03T00:00:00.000Z' }]
+      folders: [
+        {
+          id: 'watch-1',
+          path: 'C:/Downloads',
+          enabled: true,
+          recursive: true,
+          createdAt: '2026-06-03T00:00:00.000Z'
+        }
+      ]
     });
-    mockElectronAPI.saveWatchFolder.mockResolvedValue({ success: true });
-    mockElectronAPI.removeWatchFolder.mockResolvedValue({ success: true });
-    mockElectronAPI.setWatchFolderEnabled.mockResolvedValue({ success: true });
-    mockElectronAPI.selectDirectory.mockResolvedValue('C:/Desktop');
-    mockElectronAPI.onWatchFoldersChanged.mockReturnValue(jest.fn());
+    mockKeepDirAPI.saveWatchFolder.mockResolvedValue({ success: true });
+    mockKeepDirAPI.removeWatchFolder.mockResolvedValue({ success: true });
+    mockKeepDirAPI.setWatchFolderEnabled.mockResolvedValue({ success: true });
+    mockKeepDirAPI.selectDirectory.mockResolvedValue('C:/Desktop');
+    mockKeepDirAPI.onWatchFoldersChanged.mockReturnValue(jest.fn());
   });
 
   it('renders current watched folders', async () => {
@@ -47,10 +55,10 @@ describe('WatchFoldersSettings', () => {
     await waitFor(() => expect(addButton).toBeEnabled());
     await user.click(addButton);
 
-    await waitFor(() => expect(mockElectronAPI.selectDirectory).toHaveBeenCalled());
-    expect(mockElectronAPI.saveWatchFolder).toHaveBeenCalledWith(
+    await waitFor(() => expect(mockKeepDirAPI.selectDirectory).toHaveBeenCalled());
+    expect(mockKeepDirAPI.saveWatchFolder).toHaveBeenCalledWith(
       'workspace-1',
-      expect.objectContaining({ path: 'C:/Desktop', enabled: true })
+      expect.objectContaining({ path: 'C:/Desktop', enabled: true, recursive: false })
     );
   });
 
@@ -62,7 +70,25 @@ describe('WatchFoldersSettings', () => {
     await user.click(screen.getByRole('checkbox', { name: /watch C:\/Downloads/i }));
     await user.click(screen.getByRole('button', { name: /remove C:\/Downloads/i }));
 
-    expect(mockElectronAPI.setWatchFolderEnabled).toHaveBeenCalledWith('workspace-1', 'watch-1', false);
-    expect(mockElectronAPI.removeWatchFolder).toHaveBeenCalledWith('workspace-1', 'watch-1');
+    expect(mockKeepDirAPI.setWatchFolderEnabled).toHaveBeenCalledWith('workspace-1', 'watch-1', false);
+    expect(mockKeepDirAPI.removeWatchFolder).toHaveBeenCalledWith('workspace-1', 'watch-1');
+  });
+
+  it('toggles folder recursive scanning', async () => {
+    const user = userEvent.setup();
+    render(<WatchFoldersSettings workspaceId="workspace-1" />);
+
+    await waitFor(() => expect(screen.getByText('C:/Downloads')).toBeInTheDocument());
+    await user.click(screen.getByRole('checkbox', { name: /watch subfolders in c:\/downloads/i }));
+
+    expect(mockKeepDirAPI.saveWatchFolder).toHaveBeenCalledWith(
+      'workspace-1',
+      expect.objectContaining({
+        id: 'watch-1',
+        path: 'C:/Downloads',
+        enabled: true,
+        recursive: false
+      })
+    );
   });
 });

@@ -1,0 +1,36 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "KeepDir",
+  "version": "1.0.5",
+  "identifier": "com.oshtz.keepdir",
+  "build": {
+    "beforeDevCommand": "npm run dev:web",
+    "beforeBuildCommand": "npm run build",
+    "devUrl": "http://127.0.0.1:1420",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "KeepDir",
+        "width": 1180,
+        "height": 760,
+        "minWidth": 880,
+        "minHeight": 560
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "../assets/icon.png",
+      "../assets/icon.ico",
+      "../assets/icon.icns"
+    ]
+  }
+}

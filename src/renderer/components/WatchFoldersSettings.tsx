@@ -1,18 +1,12 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import Alert from '@mui/material/Alert';
-import Box from '@mui/material/Box';
-import Button from '@mui/material/Button';
-import CircularProgress from '@mui/material/CircularProgress';
-import IconButton from '@mui/material/IconButton';
-import List from '@mui/material/List';
-import ListItem from '@mui/material/ListItem';
-import ListItemText from '@mui/material/ListItemText';
-import Switch from '@mui/material/Switch';
-import Typography from '@mui/material/Typography';
-import AddIcon from '@mui/icons-material/Add';
-import DeleteIcon from '@mui/icons-material/Delete';
-import FolderIcon from '@mui/icons-material/Folder';
-import type { WatchFolder } from '../electron';
+import { Folder, Plus, Spinner, Trash } from 'phosphor-react';
+import { Alert, Button, IconButton, Switch } from './ui';
+import type { WatchFolder } from '../appApi';
+
+function folderName(path: string) {
+  const parts = path.split(/[\\/]/).filter(Boolean);
+  return parts[parts.length - 1] || path;
+}
 
 interface WatchFoldersSettingsProps {
   workspaceId?: string | null;
@@ -40,7 +34,7 @@ const WatchFoldersSettings: React.FC<WatchFoldersSettingsProps> = ({ workspaceId
 
     setLoading(true);
     try {
-      const result = await window.electronAPI.getWatchFolders(workspaceId);
+      const result = await window.keepdirAPI.getWatchFolders(workspaceId);
       if (result.error) {
         setError(result.error);
         setFolders([]);
@@ -61,7 +55,7 @@ const WatchFoldersSettings: React.FC<WatchFoldersSettingsProps> = ({ workspaceId
   }, [loadFolders]);
 
   useEffect(() => {
-    const unsubscribe = window.electronAPI.onWatchFoldersChanged((payload) => {
+    const unsubscribe = window.keepdirAPI.onWatchFoldersChanged((payload) => {
       if (payload.workspaceId === workspaceId) {
         if (payload.error) {
           setError(payload.error);
@@ -77,16 +71,17 @@ const WatchFoldersSettings: React.FC<WatchFoldersSettingsProps> = ({ workspaceId
       return;
     }
 
-    const selectedPath = await window.electronAPI.selectDirectory();
+    const selectedPath = await window.keepdirAPI.selectDirectory();
     if (!selectedPath) {
       return;
     }
 
-    const result = await window.electronAPI.saveWatchFolder(workspaceId, {
+    const result = await window.keepdirAPI.saveWatchFolder(workspaceId, {
       id: createWatchFolderId(),
       path: selectedPath,
       enabled: true,
-      createdAt: new Date().toISOString()
+      recursive: false,
+      createdAt: new Date().toISOString(),
     });
     if (result.error) {
       setError(result.error);
@@ -100,7 +95,23 @@ const WatchFoldersSettings: React.FC<WatchFoldersSettingsProps> = ({ workspaceId
       return;
     }
 
-    const result = await window.electronAPI.setWatchFolderEnabled(workspaceId, folder.id, !folder.enabled);
+    const result = await window.keepdirAPI.setWatchFolderEnabled(workspaceId, folder.id, !folder.enabled);
+    if (result.error) {
+      setError(result.error);
+      return;
+    }
+    await loadFolders();
+  };
+
+  const handleRecursiveToggle = async (folder: WatchFolder) => {
+    if (!workspaceId) {
+      return;
+    }
+
+    const result = await window.keepdirAPI.saveWatchFolder(workspaceId, {
+      ...folder,
+      recursive: !folder.recursive,
+    });
     if (result.error) {
       setError(result.error);
       return;
@@ -113,7 +124,7 @@ const WatchFoldersSettings: React.FC<WatchFoldersSettingsProps> = ({ workspaceId
       return;
     }
 
-    const result = await window.electronAPI.removeWatchFolder(workspaceId, folder.id);
+    const result = await window.keepdirAPI.removeWatchFolder(workspaceId, folder.id);
     if (result.error) {
       setError(result.error);
       return;
@@ -122,54 +133,91 @@ const WatchFoldersSettings: React.FC<WatchFoldersSettingsProps> = ({ workspaceId
   };
 
   return (
-    <Box>
-      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2, mb: 2 }}>
-        <Typography variant="h6" sx={{ fontFamily: 'var(--font-header)' }}>
-          Watch Folders
-        </Typography>
-        <Button variant="contained" startIcon={<AddIcon />} onClick={handleAdd} disabled={!workspaceId || loading}>
-          Add Watched Folder
-        </Button>
-      </Box>
+    <div className="min-w-0 flex flex-col gap-3">
+      <Button
+        variant="secondary"
+        leftIcon={<Plus size={16} weight="light" />}
+        onClick={handleAdd}
+        disabled={!workspaceId || loading}
+        className="w-full justify-center"
+      >
+        Add watched folder
+      </Button>
 
-      {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
-      {loading && <CircularProgress size={20} />}
+      {error && <Alert severity="error">{error}</Alert>}
+      {loading && <Spinner size={18} className="self-center animate-spin text-text-secondary" />}
 
-      <List dense>
+      <div className="flex flex-col gap-2">
         {folders.map((folder) => (
-          <ListItem
+          <div
             key={folder.id}
-            secondaryAction={
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <Switch
-                  checked={folder.enabled}
-                  onChange={() => handleToggle(folder)}
-                  inputProps={{ 'aria-label': `Watch ${folder.path}` }}
-                />
-                <IconButton aria-label={`Remove ${folder.path}`} onClick={() => handleRemove(folder)}>
-                  <DeleteIcon />
-                </IconButton>
-              </Box>
-            }
+            className="kd-card p-3 flex flex-col gap-2 group"
           >
-            <FolderIcon sx={{ mr: 1.5, color: 'primary.main' }} />
-            <ListItemText
-              primary={folder.path}
-              secondary={folder.enabled ? 'Watching' : 'Paused'}
-              primaryTypographyProps={{ sx: { fontFamily: 'var(--font-body)' } }}
-              secondaryTypographyProps={{ sx: { fontFamily: 'var(--font-body)' } }}
-            />
-          </ListItem>
+            <div className="flex items-center gap-2.5 min-w-0">
+              <Folder
+                size={18}
+                weight="light"
+                className={cn(
+                  'flex-shrink-0 transition-colors duration-300',
+                  folder.enabled ? 'text-accent' : 'text-text-secondary'
+                )}
+              />
+              <div className="min-w-0 flex-1">
+                <div
+                  title={folder.path}
+                  className="font-mono text-[12px] font-semibold leading-tight truncate"
+                >
+                  {folderName(folder.path)}
+                </div>
+                <div
+                  title={folder.path}
+                  className="font-mono text-[10.5px] text-text-secondary truncate"
+                >
+                  {folder.path}
+                </div>
+              </div>
+              <IconButton
+                label={`Remove ${folder.path}`}
+                onClick={() => handleRemove(folder)}
+                className="flex-shrink-0 opacity-60 group-hover:opacity-100 transition-opacity duration-300"
+              >
+                <Trash size={16} weight="light" />
+              </IconButton>
+            </div>
+
+            <div className="flex items-center justify-between gap-2">
+              <Switch
+                checked={folder.enabled}
+                onChange={() => handleToggle(folder)}
+                aria-label={`Watch ${folder.path}`}
+                label={folder.enabled ? 'On' : 'Paused'}
+              />
+              <Switch
+                checked={Boolean(folder.recursive)}
+                onChange={() => handleRecursiveToggle(folder)}
+                aria-label={`Watch subfolders in ${folder.path}`}
+                label="Subfolders"
+              />
+            </div>
+          </div>
         ))}
-      </List>
+      </div>
 
       {!loading && folders.length === 0 && (
-        <Typography variant="body2" color="text.secondary" sx={{ fontFamily: 'var(--font-body)', mt: 2 }}>
-          No watched folders configured.
-        </Typography>
+        <div className="border-t border-black/[0.08] dark:border-white/[0.08] pt-3 mt-0.5">
+          <Folder size={20} weight="light" className="text-text-secondary mb-2" />
+          <div className="font-display font-semibold text-[13.5px]">Nothing watched yet</div>
+          <div className="text-sm text-text-secondary mt-1 leading-relaxed">
+            Add Downloads to start previewing matches.
+          </div>
+        </div>
       )}
-    </Box>
+    </div>
   );
 };
+
+function cn(...classes: (string | false | undefined)[]) {
+  return classes.filter(Boolean).join(' ');
+}
 
 export default WatchFoldersSettings;

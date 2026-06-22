@@ -3,6 +3,8 @@ module.exports = {
   setupFilesAfterEnv: ['<rootDir>/src/setupTests.ts'],
   moduleNameMapper: {
     '\\.(css|less|scss|sass)$': 'identity-obj-proxy',
+    '\\.(png|jpg|jpeg|gif|svg|webp|ico|bmp|tiff)$':
+      '<rootDir>/src/__mocks__/fileMock.js',
   },
   transform: {
     '^.+\\.(ts|tsx)$': 'ts-jest',
@@ -16,7 +18,6 @@ module.exports = {
   collectCoverageFrom: [
     'src/**/*.(ts|tsx)',
     '!src/**/*.d.ts',
-    '!src/main/**/*',
     '!src/renderer/index.tsx',
   ],
 };

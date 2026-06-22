@@ -57,6 +57,7 @@ export default tseslint.config(
       'docs/**',
       'node_modules/**',
       'out/**',
+      'src-tauri/target/**',
       '*.log',
     ],
   },
