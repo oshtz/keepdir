@@ -1,4 +1,4 @@
-# KeepDir
+<h1><img src="assets/icon.svg" width="28" height="28" alt="KeepDir logo"> KeepDir</h1>
 
 Local-first desktop automation for watched folders.
 
