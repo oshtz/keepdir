@@ -44,7 +44,7 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build Windows installer
+      - name: Build Windows portable app
         shell: pwsh
         run: |
           npm run dist:win
@@ -52,29 +52,14 @@ jobs:
             exit $LASTEXITCODE
           }
 
-          $bundleDir = Join-Path $PWD 'src-tauri\target\release\bundle\nsis'
-          $installer = Get-ChildItem -LiteralPath $bundleDir -Filter '*.exe' -File |
-            Sort-Object LastWriteTime -Descending |
-            Select-Object -First 1
-          if (-not $installer) {
-            throw "Windows NSIS installer was not created in $bundleDir"
-          }
-          if ($installer.Length -lt 1MB) {
-            throw "Windows installer is unexpectedly small: $($installer.Length) bytes"
-          }
-
-          $hash = (Get-FileHash -LiteralPath $installer.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
-          $manifest = Join-Path $bundleDir 'SHA256SUMS-windows.txt'
-          "$hash  $($installer.Name)" | Set-Content -LiteralPath $manifest -Encoding ascii
-
       - name: Upload Windows release test artifact
         uses: actions/upload-artifact@v7
         with:
           name: keepdir-windows-release-test
           if-no-files-found: error
           path: |
-            src-tauri/target/release/bundle/nsis/*.exe
-            src-tauri/target/release/bundle/nsis/SHA256SUMS-windows.txt
+            src-tauri/target/release/portable/KeepDir-portable.exe
+            src-tauri/target/release/portable/SHA256SUMS-windows.txt
 
   build-macos:
     needs: validate

@@ -12,7 +12,7 @@
     "package": "npm run tauri:build",
     "make": "npm run tauri:build",
     "dist": "npm run tauri:build",
-    "dist:win": "tauri build --bundles nsis",
+    "dist:win": "tauri build --no-bundle && powershell -NoProfile -ExecutionPolicy Bypass -File scripts/package-windows-portable.ps1",
     "dist:mac": "tauri build --bundles dmg",
     "typecheck": "tsc --noEmit --pretty false",
     "lint": "eslint . --cache --cache-location node_modules/.cache/eslint/",

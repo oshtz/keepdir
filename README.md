@@ -11,7 +11,7 @@ KeepDir is now a small Tauri app built around one loop: watch folders, evaluate 
 - Case-insensitive matching by name, extension, source URL, and downloaded-from app
 - Dry-run Rule Action Queue with trace, target path, status, and reason
 - Safe apply path: rechecks file size/mtime, rejects stale files, target conflicts, traversal, and symlink target directories
-- System tray icon with Show and Quit; closing the window hides it while the watcher keeps running
+- System tray icon with pending rename count, rename-now action, startup toggle, Show, and Quit
 
 ## Stack
 
@@ -63,10 +63,10 @@ npm run dev
 ## Build
 
 ```powershell
-npm run tauri:build
+npm run dist:win
 ```
 
-Windows release bundles are written under `src-tauri\target\release\bundle\`.
+Windows release builds copy `src-tauri\target\release\keepdir.exe` to `src-tauri\target\release\portable\KeepDir-portable.exe`.
 The GitHub release workflow requires macOS secrets `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`, `APPLE_ID`, `APPLE_PASSWORD`, and `APPLE_TEAM_ID` for signed/notarized DMGs.
 
 ## Notes

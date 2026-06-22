@@ -9,13 +9,15 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 use tauri::{
-    menu::{Menu, MenuItem},
+    menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     AppHandle, Emitter, Manager, WindowEvent,
 };
+use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
 
 const AUTOMATION_RULES_KEY: &str = "automationRules";
 const KEYCHAIN_SERVICE: &str = "KeepDir Rule Assistant";
+const TRAY_ID: &str = "main";
 const WATCH_INTERVAL: Duration = Duration::from_secs(2);
 
 static STORE_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
@@ -777,6 +779,7 @@ fn scan_once(app: &AppHandle, seen: &mut HashMap<String, FileSnapshot>) -> Resul
     let changed_workspaces = scan_store(&mut store, seen);
     if !changed_workspaces.is_empty() {
         save_store(app, &store)?;
+        set_tray_menu(app, pending_rename_count(&store))?;
         for workspace_id in changed_workspaces {
             let _ = app.emit(
                 "rule-actions-changed",
@@ -807,16 +810,116 @@ fn show_main_window(app: &AppHandle) {
     }
 }
 
-fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
+fn pending_rename_count(store: &Store) -> usize {
+    store
+        .rule_actions
+        .values()
+        .flatten()
+        .filter(|action| action.status == "pending")
+        .count()
+}
+
+fn tray_menu(app: &AppHandle, pending_count: usize) -> tauri::Result<Menu<tauri::Wry>> {
+    let status = MenuItem::with_id(
+        app,
+        "pending_status",
+        format!("Pending renames: {pending_count}"),
+        false,
+        None::<&str>,
+    )?;
+    let rename = MenuItem::with_id(
+        app,
+        "rename_pending",
+        if pending_count == 1 {
+            "Rename 1 pending file".to_string()
+        } else {
+            format!("Rename {pending_count} pending files")
+        },
+        pending_count > 0,
+        None::<&str>,
+    )?;
+    let startup = CheckMenuItem::with_id(
+        app,
+        "toggle_startup",
+        "Open on startup",
+        true,
+        app.autolaunch().is_enabled().unwrap_or(false),
+        None::<&str>,
+    )?;
     let show = MenuItem::with_id(app, "show", "Show KeepDir", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&show, &quit])?;
-    let mut builder = TrayIconBuilder::new()
-        .tooltip("KeepDir")
+    let separator = PredefinedMenuItem::separator(app)?;
+    Menu::with_items(app, &[&status, &rename, &startup, &separator, &show, &quit])
+}
+
+fn set_tray_menu(app: &AppHandle, pending_count: usize) -> Result<(), String> {
+    if let Some(tray) = app.tray_by_id(TRAY_ID) {
+        let menu = tray_menu(app, pending_count).map_err(|error| error.to_string())?;
+        tray.set_menu(Some(menu))
+            .map_err(|error| error.to_string())?;
+        tray.set_tooltip(Some(format!("KeepDir - {pending_count} pending renames")))
+            .map_err(|error| error.to_string())?;
+    }
+    Ok(())
+}
+
+fn update_tray_menu(app: &AppHandle) -> Result<(), String> {
+    let store = load_store(app)?;
+    set_tray_menu(app, pending_rename_count(&store))
+}
+
+fn toggle_startup(app: &AppHandle) -> Result<(), String> {
+    let autolaunch = app.autolaunch();
+    if autolaunch.is_enabled().map_err(|error| error.to_string())? {
+        autolaunch.disable().map_err(|error| error.to_string())?;
+    } else {
+        autolaunch.enable().map_err(|error| error.to_string())?;
+    }
+    update_tray_menu(app)
+}
+
+fn apply_pending_rule_actions(app: &AppHandle) -> Result<(), String> {
+    let _guard = store_guard()?;
+    let mut store = load_store(app)?;
+    let mut changed_workspaces = HashSet::new();
+    for (workspace_id, actions) in store.rule_actions.iter_mut() {
+        for action in actions.iter_mut().filter(|action| action.status == "pending") {
+            let _ = apply_one(action);
+            changed_workspaces.insert(workspace_id.clone());
+        }
+    }
+    save_store(app, &store)?;
+    set_tray_menu(app, pending_rename_count(&store))?;
+    for workspace_id in changed_workspaces {
+        let _ = app.emit(
+            "rule-actions-changed",
+            json!({ "workspaceId": workspace_id }),
+        );
+    }
+    Ok(())
+}
+
+fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
+    let pending_count = load_store(app.handle())
+        .map(|store| pending_rename_count(&store))
+        .unwrap_or(0);
+    let menu = tray_menu(app.handle(), pending_count)?;
+    let mut builder = TrayIconBuilder::with_id(TRAY_ID)
+        .tooltip(format!("KeepDir - {pending_count} pending renames"))
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id.as_ref() {
             "show" => show_main_window(app),
+            "rename_pending" => {
+                if let Err(error) = apply_pending_rule_actions(app) {
+                    eprintln!("failed to apply pending renames from tray: {error}");
+                }
+            }
+            "toggle_startup" => {
+                if let Err(error) = toggle_startup(app) {
+                    eprintln!("failed to toggle startup from tray: {error}");
+                }
+            }
             "quit" => app.exit(0),
             _ => {}
         })
@@ -1079,6 +1182,7 @@ fn refresh_rule_actions(
         }
     }
     save_store(&app, &store)?;
+    set_tray_menu(&app, pending_rename_count(&store))?;
     let _ = app.emit(
         "rule-actions-changed",
         json!({ "workspaceId": workspace_id }),
@@ -1109,6 +1213,7 @@ fn apply_rule_actions(
         }
     }
     save_store(&app, &store)?;
+    set_tray_menu(&app, pending_rename_count(&store))?;
     let _ = app.emit(
         "rule-actions-changed",
         json!({ "workspaceId": workspace_id }),
@@ -1135,6 +1240,7 @@ fn update_rule_action_status(
         }
     }
     save_store(&app, &store)?;
+    set_tray_menu(&app, pending_rename_count(&store))?;
     let _ = app.emit(
         "rule-actions-changed",
         json!({ "workspaceId": workspace_id }),
@@ -1235,6 +1341,10 @@ fn mark_stale(action: &mut RuleAction) {
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_autostart::init(
+            MacosLauncher::LaunchAgent,
+            None,
+        ))
         .setup(|app| {
             setup_tray(app)?;
             start_watcher(app.handle().clone());
