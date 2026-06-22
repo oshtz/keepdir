@@ -1,4 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  isPermissionGranted,
+  requestPermission,
+  sendNotification,
+} from '@tauri-apps/plugin-notification';
 import { Moon, Sun } from 'phosphor-react';
 import logo from '../../assets/icon.png';
 import AutomationRulesSettings from './components/AutomationRulesSettings';
@@ -14,6 +19,9 @@ import { hexToRgb, idealInk } from './utils';
 export const DEFAULT_MONO_ACCENT_COLOR = '#525252';
 export const SIGNAL_ACCENT_COLOR = '#D4FF4F';
 const DEFAULT_WORKSPACE_ID = 'default';
+
+export const pendingRenameNotificationBody = (count: number) =>
+  count === 1 ? '1 file is ready to organize.' : `${count} files are ready to organize.`;
 
 const isValidHexColor = (color: string) =>
   /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.test(color);
@@ -80,6 +88,23 @@ const App: React.FC = () => {
   const draggingRef = useRef(false);
   const stats = useDashboardStats(DEFAULT_WORKSPACE_ID);
 
+  const notifyPendingRenames = useCallback(async (pendingCount: number) => {
+    try {
+      let granted = await isPermissionGranted();
+      if (!granted) {
+        granted = (await requestPermission()) === 'granted';
+      }
+      if (granted) {
+        sendNotification({
+          title: 'KeepDir',
+          body: pendingRenameNotificationBody(pendingCount),
+        });
+      }
+    } catch {
+      // Native notifications are optional; the tray badge still shows pending work.
+    }
+  }, []);
+
   const checkForUpdates = useCallback(async () => {
     try {
       const [currentVersion, latestRelease] = await Promise.all([
@@ -114,6 +139,14 @@ const App: React.FC = () => {
   useEffect(
     () => window.keepdirAPI.onCheckUpdatesRequested(() => void checkForUpdates()),
     [checkForUpdates]
+  );
+
+  useEffect(
+    () =>
+      window.keepdirAPI.onPendingRenamesDetected((payload) =>
+        void notifyPendingRenames(payload.pendingCount)
+      ),
+    [notifyPendingRenames]
   );
 
   useEffect(() => {

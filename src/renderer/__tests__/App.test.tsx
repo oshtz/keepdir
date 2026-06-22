@@ -1,6 +1,11 @@
 import React from 'react';
 import { render, screen, fireEvent, act } from '@testing-library/react';
-import App, { DEFAULT_MONO_ACCENT_COLOR, SIGNAL_ACCENT_COLOR, getTheme } from '../App';
+import App, {
+  DEFAULT_MONO_ACCENT_COLOR,
+  SIGNAL_ACCENT_COLOR,
+  getTheme,
+  pendingRenameNotificationBody,
+} from '../App';
 
 // The command deck pulls live counts asynchronously; flush those updates so each
 // render settles inside act() before we assert.
@@ -46,6 +51,11 @@ describe('App', () => {
     expect(darkTheme.palette.primary.main).toBe('#D4FF4F');
     expect(darkTheme.palette.background.default).toBe('#0C0C0D');
     expect(customTheme.palette.primary.main).toBe('#00FF00');
+  });
+
+  it('formats pending rename notifications', () => {
+    expect(pendingRenameNotificationBody(1)).toBe('1 file is ready to organize.');
+    expect(pendingRenameNotificationBody(3)).toBe('3 files are ready to organize.');
   });
 
   it('renders the automation console shell', async () => {

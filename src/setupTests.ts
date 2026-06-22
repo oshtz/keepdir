@@ -1,5 +1,11 @@
 import '@testing-library/jest-dom';
 
+jest.mock('@tauri-apps/plugin-notification', () => ({
+  isPermissionGranted: jest.fn(async () => false),
+  requestPermission: jest.fn(async () => 'denied'),
+  sendNotification: jest.fn(),
+}));
+
 (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
 (global as any).IS_REACT_ACT_ENVIRONMENT = true;
 (window as any).IS_REACT_ACT_ENVIRONMENT = true;
@@ -22,6 +28,7 @@ const mockKeepDirAPI = {
   openLatestRelease: jest.fn(),
   selectDirectory: jest.fn(),
   onCheckUpdatesRequested: jest.fn(() => jest.fn()),
+  onPendingRenamesDetected: jest.fn(() => jest.fn()),
   onWatchFoldersChanged: jest.fn(() => jest.fn()),
   onRuleActionsChanged: jest.fn(() => jest.fn()),
 };

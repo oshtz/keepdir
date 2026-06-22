@@ -61,6 +61,7 @@ const fallbackApi: KeepDirAPI = {
   openLatestRelease: async () => ({ success: true }),
   selectDirectory: async () => null,
   onCheckUpdatesRequested: () => () => {},
+  onPendingRenamesDetected: () => () => {},
   onWatchFoldersChanged: () => () => {},
   onRuleActionsChanged: () => () => {},
 };
@@ -105,6 +106,8 @@ const tauriApi: KeepDirAPI = {
   },
   onCheckUpdatesRequested: (callback) =>
     onTauriEvent('check-updates-requested', callback),
+  onPendingRenamesDetected: (callback) =>
+    onTauriEvent('pending-renames-detected', callback),
   onWatchFoldersChanged: (callback) =>
     onTauriEvent('watch-folders-changed', callback),
   onRuleActionsChanged: (callback) =>

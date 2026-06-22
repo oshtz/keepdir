@@ -108,6 +108,9 @@ export interface KeepDirAPI {
   openLatestRelease: () => Promise<ApiResult>;
   selectDirectory: () => Promise<string | null>;
   onCheckUpdatesRequested: (callback: () => void) => () => void;
+  onPendingRenamesDetected: (
+    callback: (payload: { pendingCount: number }) => void
+  ) => () => void;
   onWatchFoldersChanged: (
     callback: (payload: { workspaceId: string; error?: string }) => void
   ) => () => void;

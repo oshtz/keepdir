@@ -9,6 +9,7 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 use tauri::{
+    image::Image,
     menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     AppHandle, Emitter, Manager, WindowEvent,
@@ -18,6 +19,8 @@ use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
 const AUTOMATION_RULES_KEY: &str = "automationRules";
 const KEYCHAIN_SERVICE: &str = "KeepDir Rule Assistant";
 const LATEST_RELEASE_URL: &str = "https://github.com/oshtz/keepdir/releases/latest";
+const PENDING_TRAY_ICON_RGBA: &[u8] = include_bytes!("../../assets/tray-pending.rgba");
+const PENDING_TRAY_ICON_SIZE: u32 = 64;
 const TRAY_ID: &str = "main";
 const WATCH_INTERVAL: Duration = Duration::from_secs(2);
 
@@ -774,10 +777,18 @@ fn mark_out_of_scope_actions_stale(
 fn scan_once(app: &AppHandle, seen: &mut HashMap<String, FileSnapshot>) -> Result<(), String> {
     let _guard = store_guard()?;
     let mut store = load_store(app)?;
+    let old_pending_count = pending_rename_count(&store);
     let changed_workspaces = scan_store(&mut store, seen);
     if !changed_workspaces.is_empty() {
         save_store(app, &store)?;
-        set_tray_menu(app, pending_rename_count(&store))?;
+        let pending_count = pending_rename_count(&store);
+        set_tray_menu(app, pending_count)?;
+        if old_pending_count == 0 && pending_count > 0 {
+            let _ = app.emit(
+                "pending-renames-detected",
+                json!({ "pendingCount": pending_count }),
+            );
+        }
         for workspace_id in changed_workspaces {
             let _ = app.emit(
                 "rule-actions-changed",
@@ -815,6 +826,14 @@ fn pending_rename_count(store: &Store) -> usize {
         .flatten()
         .filter(|action| action.status == "pending")
         .count()
+}
+
+fn pending_tray_icon() -> Image<'static> {
+    Image::new(
+        PENDING_TRAY_ICON_RGBA,
+        PENDING_TRAY_ICON_SIZE,
+        PENDING_TRAY_ICON_SIZE,
+    )
 }
 
 fn tray_menu(app: &AppHandle, pending_count: usize) -> tauri::Result<Menu<tauri::Wry>> {
@@ -869,6 +888,12 @@ fn set_tray_menu(app: &AppHandle, pending_count: usize) -> Result<(), String> {
             .map_err(|error| error.to_string())?;
         tray.set_tooltip(Some(format!("KeepDir - {pending_count} pending renames")))
             .map_err(|error| error.to_string())?;
+        let icon = if pending_count > 0 {
+            Some(pending_tray_icon())
+        } else {
+            app.default_window_icon().cloned()
+        };
+        tray.set_icon(icon).map_err(|error| error.to_string())?;
     }
     Ok(())
 }
@@ -950,7 +975,9 @@ fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
                 show_main_window(tray.app_handle());
             }
         });
-    if let Some(icon) = app.default_window_icon() {
+    if pending_count > 0 {
+        builder = builder.icon(pending_tray_icon());
+    } else if let Some(icon) = app.default_window_icon() {
         builder = builder.icon(icon.clone());
     }
     builder.build(app)?;
@@ -1388,6 +1415,7 @@ fn mark_stale(action: &mut RuleAction) {
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_autostart::init(
             MacosLauncher::LaunchAgent,
             None,
