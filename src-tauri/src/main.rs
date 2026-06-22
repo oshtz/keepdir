@@ -17,6 +17,7 @@ use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
 
 const AUTOMATION_RULES_KEY: &str = "automationRules";
 const KEYCHAIN_SERVICE: &str = "KeepDir Rule Assistant";
+const LATEST_RELEASE_URL: &str = "https://github.com/oshtz/keepdir/releases/latest";
 const TRAY_ID: &str = "main";
 const WATCH_INTERVAL: Duration = Duration::from_secs(2);
 
@@ -733,13 +734,7 @@ fn scan_folder(
         };
         let next_snapshot = snapshot(&metadata);
         if seen.get(&key) == Some(&next_snapshot)
-            && queue_file(
-                store,
-                workspace_id,
-                folder_path,
-                &file_path,
-                &next_snapshot,
-            )
+            && queue_file(store, workspace_id, folder_path, &file_path, &next_snapshot)
         {
             changed_workspaces.insert(workspace_id.to_string());
         }
@@ -759,7 +754,10 @@ fn mark_out_of_scope_actions_stale(
                 continue;
             }
             let key = format!("{workspace_id}:{}", action.file_path);
-            if workspace_keys.map(|keys| keys.contains(&key)).unwrap_or(false) {
+            if workspace_keys
+                .map(|keys| keys.contains(&key))
+                .unwrap_or(false)
+            {
                 continue;
             }
             if action.status == "stale" {
@@ -846,10 +844,22 @@ fn tray_menu(app: &AppHandle, pending_count: usize) -> tauri::Result<Menu<tauri:
         app.autolaunch().is_enabled().unwrap_or(false),
         None::<&str>,
     )?;
+    let updates = MenuItem::with_id(
+        app,
+        "check_updates",
+        "Check for updates",
+        true,
+        None::<&str>,
+    )?;
     let show = MenuItem::with_id(app, "show", "Show KeepDir", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
     let separator = PredefinedMenuItem::separator(app)?;
-    Menu::with_items(app, &[&status, &rename, &startup, &separator, &show, &quit])
+    Menu::with_items(
+        app,
+        &[
+            &status, &rename, &startup, &updates, &separator, &show, &quit,
+        ],
+    )
 }
 
 fn set_tray_menu(app: &AppHandle, pending_count: usize) -> Result<(), String> {
@@ -883,7 +893,10 @@ fn apply_pending_rule_actions(app: &AppHandle) -> Result<(), String> {
     let mut store = load_store(app)?;
     let mut changed_workspaces = HashSet::new();
     for (workspace_id, actions) in store.rule_actions.iter_mut() {
-        for action in actions.iter_mut().filter(|action| action.status == "pending") {
+        for action in actions
+            .iter_mut()
+            .filter(|action| action.status == "pending")
+        {
             let _ = apply_one(action);
             changed_workspaces.insert(workspace_id.clone());
         }
@@ -920,6 +933,10 @@ fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
                     eprintln!("failed to toggle startup from tray: {error}");
                 }
             }
+            "check_updates" => {
+                show_main_window(app);
+                let _ = app.emit("check-updates-requested", json!({}));
+            }
             "quit" => app.exit(0),
             _ => {}
         })
@@ -947,6 +964,36 @@ fn rule_assistant_key_entry(provider: &str) -> Result<keyring::Entry, String> {
         }
         _ => Err("Unknown rule assistant provider".to_string()),
     }
+}
+
+fn open_url(url: &str) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    let status = std::process::Command::new("cmd")
+        .args(["/C", "start", "", url])
+        .status();
+
+    #[cfg(target_os = "macos")]
+    let status = std::process::Command::new("open").arg(url).status();
+
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let status = std::process::Command::new("xdg-open").arg(url).status();
+
+    match status {
+        Ok(status) if status.success() => Ok(()),
+        Ok(status) => Err(format!("Failed to open release page: {status}")),
+        Err(error) => Err(error.to_string()),
+    }
+}
+
+#[tauri::command]
+fn get_app_version() -> String {
+    env!("CARGO_PKG_VERSION").to_string()
+}
+
+#[tauri::command]
+fn open_latest_release() -> Result<Value, String> {
+    open_url(LATEST_RELEASE_URL)?;
+    Ok(json!({ "success": true }))
 }
 
 #[tauri::command]
@@ -1371,7 +1418,9 @@ fn main() {
             get_rule_actions,
             apply_rule_actions,
             skip_rule_actions,
-            refresh_rule_actions
+            refresh_rule_actions,
+            get_app_version,
+            open_latest_release
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -104,7 +104,10 @@ export interface KeepDirAPI {
   ) => Promise<ApiResult & { results?: Array<{ id: string; success: boolean; error?: string }> }>;
   skipRuleActions: (workspaceId: string, actionIds: string[]) => Promise<ApiResult>;
   refreshRuleActions: (workspaceId: string, actionIds: string[]) => Promise<ApiResult>;
+  getAppVersion: () => Promise<string>;
+  openLatestRelease: () => Promise<ApiResult>;
   selectDirectory: () => Promise<string | null>;
+  onCheckUpdatesRequested: (callback: () => void) => () => void;
   onWatchFoldersChanged: (
     callback: (payload: { workspaceId: string; error?: string }) => void
   ) => () => void;

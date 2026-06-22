@@ -7,6 +7,7 @@ import WatchFoldersSettings from './components/WatchFoldersSettings';
 import StatDeck from './components/StatDeck';
 import { Checkbox, IconButton, Panel, PanelHeader, Tooltip } from './components/ui';
 import { useDashboardStats } from './hooks/useDashboardStats';
+import { getLatestRelease, isNewerVersion } from './updateCheck';
 import { hexToRgb, idealInk } from './utils';
 
 // Legacy exports kept for back-compat; the default identity is now the signal accent.
@@ -78,6 +79,42 @@ const App: React.FC = () => {
   const [footerEl, setFooterEl] = useState<HTMLDivElement | null>(null);
   const draggingRef = useRef(false);
   const stats = useDashboardStats(DEFAULT_WORKSPACE_ID);
+
+  const checkForUpdates = useCallback(async () => {
+    try {
+      const [currentVersion, latestRelease] = await Promise.all([
+        window.keepdirAPI.getAppVersion(),
+        getLatestRelease(),
+      ]);
+
+      if (!latestRelease) {
+        window.alert('No KeepDir releases are published yet.');
+        return;
+      }
+
+      if (!isNewerVersion(latestRelease.version, currentVersion)) {
+        window.alert(`KeepDir is up to date (${currentVersion}).`);
+        return;
+      }
+
+      if (
+        window.confirm(
+          `KeepDir ${latestRelease.version} is available.\n\nOpen the GitHub release page?`
+        )
+      ) {
+        await window.keepdirAPI.openLatestRelease();
+      }
+    } catch (error) {
+      window.alert(
+        `Could not check for updates: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  }, []);
+
+  useEffect(
+    () => window.keepdirAPI.onCheckUpdatesRequested(() => void checkForUpdates()),
+    [checkForUpdates]
+  );
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', darkMode);

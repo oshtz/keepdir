@@ -57,7 +57,10 @@ const fallbackApi: KeepDirAPI = {
   applyRuleActions: async () => ({ success: true, results: [] }),
   skipRuleActions: async () => ({ success: true }),
   refreshRuleActions: async () => ({ success: true }),
+  getAppVersion: async () => '0.0.0',
+  openLatestRelease: async () => ({ success: true }),
   selectDirectory: async () => null,
+  onCheckUpdatesRequested: () => () => {},
   onWatchFoldersChanged: () => () => {},
   onRuleActionsChanged: () => () => {},
 };
@@ -92,10 +95,16 @@ const tauriApi: KeepDirAPI = {
     invoke('skip_rule_actions', { workspaceId, actionIds }),
   refreshRuleActions: (workspaceId, actionIds) =>
     invoke('refresh_rule_actions', { workspaceId, actionIds }),
+  getAppVersion: () =>
+    invoke('get_app_version'),
+  openLatestRelease: () =>
+    invoke('open_latest_release'),
   selectDirectory: async () => {
     const selected = await open({ directory: true, multiple: false });
     return typeof selected === 'string' ? selected : null;
   },
+  onCheckUpdatesRequested: (callback) =>
+    onTauriEvent('check-updates-requested', callback),
   onWatchFoldersChanged: (callback) =>
     onTauriEvent('watch-folders-changed', callback),
   onRuleActionsChanged: (callback) =>

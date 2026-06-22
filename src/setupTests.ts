@@ -18,7 +18,10 @@ const mockKeepDirAPI = {
   applyRuleActions: jest.fn(),
   skipRuleActions: jest.fn(),
   refreshRuleActions: jest.fn(),
+  getAppVersion: jest.fn(),
+  openLatestRelease: jest.fn(),
   selectDirectory: jest.fn(),
+  onCheckUpdatesRequested: jest.fn(() => jest.fn()),
   onWatchFoldersChanged: jest.fn(() => jest.fn()),
   onRuleActionsChanged: jest.fn(() => jest.fn()),
 };
