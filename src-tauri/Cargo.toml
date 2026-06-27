@@ -1,6 +1,6 @@
 [package]
 name = "keepdir"
-version = "0.1.0"
+version = "0.1.1"
 description = "KeepDir"
 authors = ["oshtz"]
 edition = "2021"
@@ -12,6 +12,7 @@ tauri-build = { version = "2", features = [] }
 keyring = "3"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 tauri = { version = "2", features = ["tray-icon"] }
 tauri-plugin-autostart = "2.5.1"
 tauri-plugin-dialog = "2.4.1"

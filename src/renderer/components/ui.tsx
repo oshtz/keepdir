@@ -26,8 +26,11 @@ export function Panel({
   style?: React.CSSProperties;
 }) {
   return (
-    <div className={cn('kd-rise kd-shell min-h-0', className)} style={{ animationDelay: `${delay}ms`, ...style }}>
-      <div className="kd-core h-full w-full overflow-hidden flex flex-col min-h-0">{children}</div>
+    <div
+      className={cn('kd-rise min-h-0 flex flex-col', className)}
+      style={{ animationDelay: `${delay}ms`, ...style }}
+    >
+      {children}
     </div>
   );
 }
@@ -48,7 +51,13 @@ export function PanelHeader({
   actions?: React.ReactNode;
 }) {
   return (
-    <div className={cn('flex-shrink-0 flex items-center justify-between gap-3', compact ? 'px-3 py-1.5' : 'px-5 py-3', divider && 'border-b border-border')}>
+    <div
+      className={cn(
+        'flex-shrink-0 flex items-center justify-between gap-3',
+        compact ? 'px-1 py-1.5' : 'px-1 py-2.5',
+        divider && 'mb-1'
+      )}
+    >
       <div className="min-w-0">
         <Eyebrow>{eyebrow}</Eyebrow>
         <div className="font-display font-semibold text-[17px] leading-tight tracking-[-0.01em] truncate text-balance">{title}</div>
@@ -56,7 +65,7 @@ export function PanelHeader({
       <div className="flex-shrink-0 flex items-center gap-2.5">
         {actions}
         {badge && (
-          <span className="flex-shrink-0 font-mono text-[11px] text-text-secondary border border-border rounded-[var(--radius-md)] px-2.5 py-0.5">
+          <span className="flex-shrink-0 font-mono text-[11px] text-text-secondary">
             {badge}
           </span>
         )}
@@ -89,7 +98,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
           size === 'md' ? 'px-4 py-2.5 text-sm rounded-[var(--radius-md)]' : 'px-3 py-1.5 text-xs rounded-[var(--radius-md)]',
           variant === 'primary' && 'bg-accent text-accent-ink hover:brightness-105',
           variant === 'secondary' &&
-            'bg-surface border border-border text-text hover:border-border-hover',
+            'bg-black/[0.045] text-text hover:bg-black/[0.075] dark:bg-white/[0.07] dark:hover:bg-white/[0.1]',
           variant === 'ghost' && 'bg-transparent text-text-secondary hover:text-text hover:bg-black/[0.04] dark:hover:bg-white/[0.05]',
           className
         )}
@@ -157,7 +166,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(({ label, classNam
         ref={ref}
         id={inputId}
         className={cn(
-          'w-full px-3 py-2 text-sm bg-black/[0.04] dark:bg-white/[0.05] border border-border',
+          'w-full px-3 py-2 text-sm bg-black/[0.04] dark:bg-white/[0.05] border border-transparent',
           'rounded-[var(--radius-md)] text-text placeholder:text-text-secondary/60',
           'transition-all duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]',
           'focus:outline-none focus:border-border-hover focus:ring-2 focus:ring-accent/30',
@@ -188,7 +197,7 @@ export const TextArea = forwardRef<HTMLTextAreaElement, TextAreaProps>(({ label,
         ref={ref}
         id={inputId}
         className={cn(
-          'w-full px-3 py-2 text-sm bg-black/[0.04] dark:bg-white/[0.05] border border-border',
+          'w-full px-3 py-2 text-sm bg-black/[0.04] dark:bg-white/[0.05] border border-transparent',
           'rounded-[var(--radius-md)] text-text placeholder:text-text-secondary/60 resize-y min-h-[64px]',
           'transition-all duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]',
           'focus:outline-none focus:border-border-hover focus:ring-2 focus:ring-accent/30'
@@ -221,7 +230,7 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(
             ref={ref}
             id={selectId}
             className={cn(
-              'w-full appearance-none px-3 py-2 pr-8 text-sm bg-black/[0.04] dark:bg-white/[0.05] border border-border',
+              'w-full appearance-none px-3 py-2 pr-8 text-sm bg-black/[0.04] dark:bg-white/[0.05] border border-transparent',
               'rounded-[var(--radius-md)] text-text',
               'transition-all duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]',
               'focus:outline-none focus:border-border-hover focus:ring-2 focus:ring-accent/30'
@@ -283,7 +292,7 @@ export const Combobox = forwardRef<HTMLInputElement, ComboboxProps>(
           onFocus={() => setOpen(true)}
           onBlur={() => setOpen(false)}
           className={cn(
-            'w-full px-3 py-2 text-sm bg-black/[0.04] dark:bg-white/[0.05] border border-border',
+            'w-full px-3 py-2 text-sm bg-black/[0.04] dark:bg-white/[0.05] border border-transparent',
             'rounded-[var(--radius-md)] text-text placeholder:text-text-secondary/60',
             'transition-all duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]',
             'focus:outline-none focus:border-border-hover focus:ring-2 focus:ring-accent/30'

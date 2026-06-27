@@ -8,9 +8,12 @@ KeepDir is now a small Tauri app built around one loop: watch folders, evaluate 
 
 - Watched folders with a native folder picker
 - Ordered automation rules
+- Rule test panel for previewing a sample filename before files move
 - Case-insensitive matching by name, extension, source URL, and downloaded-from app
 - Dry-run Rule Action Queue with trace, target path, status, and reason
+- Inline conflict retargeting and undo for applied moves
 - Safe apply path: rechecks file size/mtime, rejects stale files, target conflicts, traversal, and symlink target directories
+- Atomic app-data JSON writes with a backup fallback
 - System tray icon with pending rename count, rename-now action, startup toggle, Show, and Quit
 
 ## Stack

@@ -5,8 +5,10 @@ import RuleActionsQueue from '../RuleActionsQueue';
 import type { RuleAction } from '../../appApi';
 
 const mockApply = jest.fn();
+const mockUndo = jest.fn();
 const mockSkip = jest.fn();
 const mockRefresh = jest.fn();
+const mockRenameTarget = jest.fn();
 let mockActions: RuleAction[] = [];
 let mockLastIncludeHistory = false;
 
@@ -18,8 +20,10 @@ jest.mock('../../hooks/useRuleActions', () => ({
       loading: false,
       error: null,
       apply: mockApply,
+      undo: mockUndo,
       skip: mockSkip,
-      refresh: mockRefresh
+      refresh: mockRefresh,
+      renameTarget: mockRenameTarget
     };
   }
 }));
@@ -56,13 +60,15 @@ describe('RuleActionsQueue', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockApply.mockResolvedValue({ success: true });
+    mockUndo.mockResolvedValue({ success: true });
     mockSkip.mockResolvedValue({ success: true });
     mockRefresh.mockResolvedValue({ success: true });
+    mockRenameTarget.mockResolvedValue({ success: true });
     mockActions = [];
     mockLastIncludeHistory = false;
   });
 
-  it('shows the full dry-run row fields and conflict/error reasons', () => {
+  it('keeps queue rows concise while preserving details in row titles', () => {
     mockActions = [
       action({
         status: 'conflict',
@@ -81,15 +87,18 @@ describe('RuleActionsQueue', () => {
 
     render(<RuleActionsQueue workspaceId="workspace-1" embedded />);
 
-    expect(screen.getByText('conflict')).toBeInTheDocument();
+    expect(screen.getByText('blocked')).toBeInTheDocument();
     expect(screen.getByText('error')).toBeInTheDocument();
-    expect(screen.getByText(/Original path: C:\\Downloads\\invoice\.pdf/)).toBeInTheDocument();
-    expect(screen.getByText(/Trace: Invoices: name contains "invoice"/)).toBeInTheDocument();
-    expect(screen.getByText(/Action: Move/)).toBeInTheDocument();
-    expect(screen.getByText(/Target: C:\\Downloads\\Invoices\\invoice\.pdf/)).toBeInTheDocument();
-    expect(screen.getByText(/Reason: Target already exists/)).toBeInTheDocument();
+    expect(screen.getByText(/Invoices\/invoice\.pdf/)).toBeInTheDocument();
+    expect(screen.queryByText(/Original path:/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Trace:/)).not.toBeInTheDocument();
+    expect(screen.getByTitle(/From: C:\\Downloads\\invoice\.pdf/)).toHaveAttribute(
+      'title',
+      expect.stringContaining('Matched: Invoices: name contains "invoice"')
+    );
+    expect(screen.getByText(/Target already exists/)).toBeInTheDocument();
     expect(
-      screen.getByText(/Reason: Target path must stay inside the watched folder/)
+      screen.getByText(/Target path must stay inside the watched folder/)
     ).toBeInTheDocument();
   });
 
@@ -139,7 +148,7 @@ describe('RuleActionsQueue', () => {
     expect(screen.getByRole('checkbox', { name: /select receipt\.pdf/i })).not.toBeChecked();
   });
 
-  it('can request history and keeps terminal rows read-only', async () => {
+  it('can request history and undo applied rows', async () => {
     const user = userEvent.setup();
     mockActions = [action({ status: 'applied' })];
 
@@ -148,7 +157,26 @@ describe('RuleActionsQueue', () => {
     expect(mockLastIncludeHistory).toBe(false);
     await user.click(screen.getByLabelText('Show history'));
     expect(mockLastIncludeHistory).toBe(true);
-    expect(screen.getByLabelText('Select invoice.pdf')).toBeDisabled();
+    await user.click(screen.getByLabelText('Select invoice.pdf'));
+    await user.click(screen.getByRole('button', { name: /undo/i }));
+    expect(mockUndo).toHaveBeenCalledWith(['action-1']);
+    expect(screen.getByRole('button', { name: /skip/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /refresh/i })).toBeDisabled();
+  });
+
+  it('can rename a conflicted target inline', async () => {
+    const user = userEvent.setup();
+    mockActions = [action({ status: 'conflict', errorMessage: 'Target already exists' })];
+
+    render(<RuleActionsQueue workspaceId="workspace-1" embedded />);
+
+    const input = screen.getByLabelText('Rename to');
+    expect(input).toHaveValue('invoice-2.pdf');
+    await user.clear(input);
+    await user.type(input, 'invoice-final.pdf');
+    await user.click(screen.getByRole('button', { name: /^rename$/i }));
+
+    expect(mockRenameTarget).toHaveBeenCalledWith('action-1', 'invoice-final.pdf');
   });
 
   it('shows rejected action errors without clearing selection', async () => {

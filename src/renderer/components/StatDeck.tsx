@@ -1,51 +1,9 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React from 'react';
 import { Folder, List, Tray } from 'phosphor-react';
 import type { DashboardStats } from '../hooks/useDashboardStats';
 
 interface StatDeckProps {
   stats: DashboardStats;
-}
-
-function useCountUp(value: number, duration = 720) {
-  const [display, setDisplay] = useState(value);
-  const fromRef = useRef(value);
-
-  useEffect(() => {
-    const from = fromRef.current;
-    const to = value;
-    if (from === to) {
-      return;
-    }
-
-    let raf = 0;
-    let start: number | null = null;
-    const step = (now: number) => {
-      if (start === null) {
-        start = now;
-      }
-      const progress = Math.min(1, (now - start) / duration);
-      const eased = 1 - Math.pow(1 - progress, 3);
-      setDisplay(Math.round(from + (to - from) * eased));
-      if (progress < 1) {
-        raf = requestAnimationFrame(step);
-      } else {
-        fromRef.current = to;
-      }
-    };
-
-    raf = requestAnimationFrame(step);
-    const settle = window.setTimeout(() => {
-      fromRef.current = to;
-      setDisplay(to);
-    }, duration + 80);
-
-    return () => {
-      cancelAnimationFrame(raf);
-      window.clearTimeout(settle);
-    };
-  }, [value, duration]);
-
-  return display;
 }
 
 const StatRow: React.FC<{
@@ -55,7 +13,6 @@ const StatRow: React.FC<{
   accent?: boolean;
   icon: React.ReactNode;
 }> = ({ label, value, sub, accent = false, icon }) => {
-  const display = useCountUp(value);
   return (
     <div className="flex items-center justify-between gap-3">
       <div className="flex items-center gap-2.5 min-w-0">
@@ -71,7 +28,7 @@ const StatRow: React.FC<{
           accent && value > 0 ? 'text-accent' : 'text-text'
         )}
       >
-        {display}
+        {value}
       </div>
     </div>
   );
@@ -95,7 +52,7 @@ const StatDeck: React.FC<StatDeckProps> = ({ stats }) => {
           </div>
         </div>
         <div className="font-mono text-[11px] text-text-secondary mt-1.5">
-          {engineActive ? 'watching · evaluating' : 'enable a folder + rule'}
+          {engineActive ? 'running' : 'off'}
         </div>
       </div>
 

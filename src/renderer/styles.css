@@ -177,42 +177,39 @@ body {
   border-radius: 999px;
 }
 
-/* Double-bezel shell/core: shell is a borderless recessed mat; core holds the single hairline */
+/* Dialog shell/core; the main workspace uses unframed layout panels. */
 .kd-shell {
-  border-radius: var(--radius-xl);
-  padding: 4px;
-  background-color: rgba(0, 0, 0, 0.04);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  border-radius: var(--radius-lg);
+  background-color: transparent;
 }
 
 .dark .kd-shell {
-  background-color: rgba(255, 255, 255, 0.04);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  background-color: transparent;
+  box-shadow: none;
 }
 
 .kd-core {
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   background-color: var(--kd-surface);
-  border: 1px solid var(--kd-border);
 }
 
 .dark .kd-core {
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  box-shadow: none;
 }
 
 /* Cards: elevation by background tint, not outlines */
 .kd-card {
   border-radius: var(--radius-md);
-  background-color: var(--kd-surface-elevated);
-  transition: box-shadow 300ms var(--ease-fluid), transform 300ms var(--ease-fluid), background-color 300ms var(--ease-fluid);
+  background-color: color-mix(in srgb, var(--kd-surface-elevated) 72%, transparent);
+  transition: background-color 220ms var(--ease-fluid), transform 220ms var(--ease-fluid);
 }
 
 .kd-card:hover {
-  box-shadow: 0 6px 20px rgba(10, 10, 11, 0.06);
+  background-color: var(--kd-surface-elevated);
 }
 
 .dark .kd-card:hover {
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+  box-shadow: none;
 }
 
 /* Visible keyboard focus for all interactive primitives */

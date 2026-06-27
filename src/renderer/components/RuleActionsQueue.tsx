@@ -1,7 +1,7 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowsClockwise, Check, X } from 'phosphor-react';
-import { Alert, Button, Checkbox, Dialog } from './ui';
+import { ArrowCounterClockwise, ArrowsClockwise, Check, X } from 'phosphor-react';
+import { Alert, Button, Checkbox, Dialog, Input } from './ui';
 import { useRuleActions } from '../hooks/useRuleActions';
 import type { RuleAction, RuleActionStatus } from '../appApi';
 
@@ -37,11 +37,36 @@ function getTrace(action: RuleAction) {
     : action.errorMessage || 'No rule matched';
 }
 
-function getFinalAction(action: RuleAction) {
-  if (action.targetPath) {
-    return 'Move';
+function getStatusLabel(status: RuleActionStatus) {
+  switch (status) {
+    case 'pending':
+      return 'ready';
+    case 'needs_review':
+      return 'check';
+    case 'conflict':
+      return 'blocked';
+    default:
+      return status;
   }
-  return action.status === 'needs_review' ? 'Ask' : 'Review';
+}
+
+function compactPath(path?: string | null) {
+  if (!path) {
+    return 'Choose destination';
+  }
+  const parts = path.split(/[\\/]/).filter(Boolean);
+  if (parts.length <= 2) {
+    return path;
+  }
+  return parts.slice(-2).join('/');
+}
+
+function nextConflictName(name: string) {
+  const dot = name.lastIndexOf('.');
+  if (dot > 0) {
+    return `${name.slice(0, dot)}-2${name.slice(dot)}`;
+  }
+  return `${name}-2`;
 }
 
 const RuleActionsQueue: React.FC<RuleActionsQueueProps> = ({
@@ -63,19 +88,28 @@ const RuleActionsQueue: React.FC<RuleActionsQueueProps> = ({
       setInternalShowHistory(value);
     }
   };
-  const { actions, loading, error, apply, skip, refresh } = useRuleActions(workspaceId, showHistory);
+  const { actions, loading, error, apply, undo, skip, refresh, renameTarget } = useRuleActions(workspaceId, showHistory);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [targetDrafts, setTargetDrafts] = useState<Record<string, string>>({});
 
   const selectedActions = useMemo(
     () => actions.filter((action) => selectedIds.includes(action.id)),
     [actions, selectedIds]
   );
   const canApply = selectedActions.length > 0 && selectedActions.every((action) => action.status === 'pending');
-  const canSelect = (action: RuleAction) => action.status !== 'applied' && action.status !== 'skipped';
+  const canUndo = selectedActions.length > 0 && selectedActions.every((action) => action.status === 'applied');
+  const canRevise = selectedActions.length > 0 && selectedActions.every((action) => action.status !== 'applied');
+  const canSelect = useCallback(
+    (action: RuleAction) =>
+      action.status === 'applied'
+        ? showHistory
+        : action.status !== 'skipped' && action.status !== 'undone',
+    [showHistory]
+  );
   const selectableActionIds = useMemo(
     () => actions.filter((action) => canSelect(action)).map((action) => action.id),
-    [actions]
+    [actions, canSelect]
   );
   const isAllSelected =
     selectableActionIds.length > 0 && selectableActionIds.every((id) => selectedIds.includes(id));
@@ -107,12 +141,30 @@ const RuleActionsQueue: React.FC<RuleActionsQueueProps> = ({
     setSelectedIds([]);
   };
 
+  const runRename = async (id: string, targetName: string) => {
+    setActionError(null);
+    try {
+      const result = await renameTarget(id, targetName);
+      if (result.error) {
+        setActionError(result.error);
+        return;
+      }
+      setTargetDrafts((previous) => {
+        const next = { ...previous };
+        delete next[id];
+        return next;
+      });
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Rename failed');
+    }
+  };
+
   const content = (
-    <div className="flex-1 min-h-0 min-w-0 overflow-y-auto px-3 pb-3">
+    <div className="flex-1 min-h-0 min-w-0 overflow-y-auto pb-3">
       {(error || actionError) && <Alert severity="error" className="mb-3">{error || actionError}</Alert>}
       {loading && <div className="text-sm text-text-secondary">Loading rule actions...</div>}
       {!loading && actions.length === 0 && (
-        <div className={cn('max-w-[420px] border-t border-border pt-3 mt-4', embedded && 'mt-8')}>
+        <div className={cn('max-w-[420px] pt-3 mt-4', embedded && 'mt-8')}>
           <div className="font-header font-semibold text-sm">
             {showHistory ? 'No history yet' : 'Queue is clear'}
           </div>
@@ -126,12 +178,13 @@ const RuleActionsQueue: React.FC<RuleActionsQueueProps> = ({
       <ul className="flex flex-col gap-2">
         {actions.map((action) => {
           const statusColor = getStatusColor(action.status);
-          const finalAction = getFinalAction(action);
           const trace = getTrace(action);
+          const targetLabel = compactPath(action.targetPath);
           return (
             <li
               key={action.id}
               className="kd-card px-3 py-2.5 flex items-start gap-2.5"
+              title={`From: ${action.filePath}\nMatched: ${trace}\nTo: ${action.targetPath || 'Choose destination'}`}
             >
               <Checkbox
                 checked={selectedIds.includes(action.id)}
@@ -145,9 +198,9 @@ const RuleActionsQueue: React.FC<RuleActionsQueueProps> = ({
                 <div className="flex items-center justify-between gap-2 min-w-0">
                   <div className="flex items-center gap-1.5 min-w-0">
                     <span className="font-mono text-sm font-semibold truncate">{action.originalName}</span>
-                    <span className="flex-shrink-0 text-text-secondary">→</span>
-                    <span className="font-mono text-sm text-text-secondary truncate flex-1">
-                      {action.targetPath || '(ask)'}
+                    <span className="flex-shrink-0 text-text-secondary">-&gt;</span>
+                    <span className="font-mono text-sm text-text-secondary truncate flex-1" title={action.targetPath || undefined}>
+                      {targetLabel}
                     </span>
                   </div>
                   <span
@@ -168,18 +221,42 @@ const RuleActionsQueue: React.FC<RuleActionsQueueProps> = ({
                         statusColor === 'default' && 'bg-text-secondary/60'
                       )}
                     />
-                    {action.status}
+                    {getStatusLabel(action.status)}
                   </span>
                 </div>
-                {/* Secondary: quiet labeled fields (each line is one text node for test matching) */}
-                <div className="font-mono text-[11px] text-text-secondary leading-relaxed mt-1.5 flex flex-col gap-0.5 min-w-0">
-                  <span className="truncate">{`Original path: ${action.filePath}`}</span>
-                  <span className="truncate">{`Trace: ${trace}`}</span>
-                  <span className="truncate">{`Action: ${finalAction} · Target: ${action.targetPath || '(ask)'}`}</span>
-                  {action.errorMessage && (
-                    <span className="text-danger truncate">{`Reason: ${action.errorMessage}`}</span>
-                  )}
-                </div>
+                {action.errorMessage && (
+                  <div className="mt-1.5 font-mono text-[11px] text-danger truncate">
+                    {action.errorMessage}
+                  </div>
+                )}
+                {action.status === 'conflict' && (
+                  <div className="mt-2 flex items-end gap-2">
+                    <Input
+                      label="Rename to"
+                      value={targetDrafts[action.id] ?? nextConflictName(action.targetName || action.originalName)}
+                      onChange={(event) =>
+                        setTargetDrafts((previous) => ({
+                          ...previous,
+                          [action.id]: event.target.value,
+                        }))
+                      }
+                      inputClassName="text-xs px-2.5 py-1.5"
+                      className="flex-1"
+                    />
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() =>
+                        runRename(
+                          action.id,
+                          targetDrafts[action.id] ?? nextConflictName(action.targetName || action.originalName)
+                        )
+                      }
+                    >
+                      Rename
+                    </Button>
+                  </div>
+                )}
               </div>
             </li>
           );
@@ -221,7 +298,7 @@ const RuleActionsQueue: React.FC<RuleActionsQueueProps> = ({
         variant="ghost"
         size="sm"
         leftIcon={<X size={14} weight="light" />}
-        disabled={selectedIds.length === 0}
+        disabled={!canRevise}
         onClick={() => runAction(skip)}
       >
         Skip
@@ -230,10 +307,19 @@ const RuleActionsQueue: React.FC<RuleActionsQueueProps> = ({
         variant="ghost"
         size="sm"
         leftIcon={<ArrowsClockwise size={14} weight="light" />}
-        disabled={selectedIds.length === 0}
+        disabled={!canRevise}
         onClick={() => runAction(refresh)}
       >
         Refresh
+      </Button>
+      <Button
+        variant="ghost"
+        size="sm"
+        leftIcon={<ArrowCounterClockwise size={14} weight="light" />}
+        disabled={!canUndo}
+        onClick={() => runAction(undo)}
+      >
+        Undo
       </Button>
       <Button
         variant="primary"
@@ -249,13 +335,13 @@ const RuleActionsQueue: React.FC<RuleActionsQueueProps> = ({
 
   const actionsBar = isControlled ? (
     /* Compact footer: single row — Select all on left, buttons on right */
-    <div className="flex items-center justify-between gap-2 flex-wrap min-w-0 w-full px-3 pt-2.5 pb-3 flex-shrink-0">
+    <div className="flex items-center justify-between gap-2 flex-wrap min-w-0 w-full pt-2.5 pb-1 flex-shrink-0">
       {selectionControls}
       {actionButtons}
     </div>
   ) : (
     /* Full actionsBar with Show history toggle (standalone / dialog) */
-    <div className="flex flex-col gap-2 pt-2.5 flex-shrink-0 w-full min-w-0 px-3">
+    <div className="flex flex-col gap-2 pt-2.5 flex-shrink-0 w-full min-w-0">
       <div className="flex items-center gap-4 flex-wrap min-w-0">
         {selectionControls}
         {historyToggle}
@@ -276,7 +362,7 @@ const RuleActionsQueue: React.FC<RuleActionsQueueProps> = ({
     return (
       <div className="min-w-0 flex-1 min-h-0 flex flex-col">
         {content}
-        <div className="flex-shrink-0 border-t border-border">
+        <div className="flex-shrink-0">
           {actionsBar}
         </div>
       </div>

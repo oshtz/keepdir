@@ -1,11 +1,11 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   isPermissionGranted,
   requestPermission,
   sendNotification,
 } from '@tauri-apps/plugin-notification';
 import { Moon, Sun } from 'phosphor-react';
-import logo from '../../assets/icon.png';
+import logo from '../../assets/icon.svg';
 import AutomationRulesSettings from './components/AutomationRulesSettings';
 import RuleActionsQueue from './components/RuleActionsQueue';
 import WatchFoldersSettings from './components/WatchFoldersSettings';
@@ -30,7 +30,11 @@ const isValidHexColor = (color: string) =>
 export const getTheme = (
   darkMode: boolean,
   accentColor: string = SIGNAL_ACCENT_COLOR,
-  workspaceTheme?: { accentColor?: string; darkMode?: boolean; customColors?: { primary?: string; background?: string; surface?: string } }
+  workspaceTheme?: {
+    accentColor?: string;
+    darkMode?: boolean;
+    customColors?: { primary?: string; background?: string; surface?: string };
+  }
 ) => {
   const workspaceAccentColor = workspaceTheme?.accentColor;
   const sanitizedAccentColor = isValidHexColor(accentColor) ? accentColor : SIGNAL_ACCENT_COLOR;
@@ -56,8 +60,7 @@ export const getTheme = (
       warning: { main: '#F5A623', contrastText: '#0C0C0D' },
       error: { main: '#FF5C5C', contrastText: '#0C0C0D' },
       background: {
-        default:
-          customColors.background || (finalDarkMode ? '#0C0C0D' : '#F4F4F1'),
+        default: customColors.background || (finalDarkMode ? '#0C0C0D' : '#F4F4F1'),
         paper: customColors.surface || (finalDarkMode ? '#141416' : '#FFFFFF'),
       },
       text: {
@@ -69,23 +72,9 @@ export const getTheme = (
   };
 };
 
-const SIDEBAR_WIDTH_KEY = 'keepdir.sidebarWidth';
-const DEFAULT_SIDEBAR_WIDTH = 360;
-const MIN_SIDEBAR_WIDTH = 280;
-const MAX_SIDEBAR_WIDTH = 520;
-
-function loadSidebarWidth(): number {
-  const raw = Number(localStorage.getItem(SIDEBAR_WIDTH_KEY));
-  if (!Number.isFinite(raw)) return DEFAULT_SIDEBAR_WIDTH;
-  return Math.min(MAX_SIDEBAR_WIDTH, Math.max(MIN_SIDEBAR_WIDTH, raw));
-}
-
 const App: React.FC = () => {
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem('darkMode') === 'true');
-  const [sidebarWidth, setSidebarWidth] = useState(() => loadSidebarWidth());
   const [showHistory, setShowHistory] = useState(false);
-  const [footerEl, setFooterEl] = useState<HTMLDivElement | null>(null);
-  const draggingRef = useRef(false);
   const stats = useDashboardStats(DEFAULT_WORKSPACE_ID);
 
   const notifyPendingRenames = useCallback(async (pendingCount: number) => {
@@ -159,37 +148,6 @@ const App: React.FC = () => {
     localStorage.setItem('darkMode', String(checked));
   };
 
-  const startResize = useCallback((event: React.MouseEvent) => {
-    event.preventDefault();
-    draggingRef.current = true;
-    document.body.style.cursor = 'col-resize';
-    document.body.style.userSelect = 'none';
-  }, []);
-
-  useEffect(() => {
-    const onMove = (event: MouseEvent) => {
-      if (!draggingRef.current) return;
-      const next = Math.min(MAX_SIDEBAR_WIDTH, Math.max(MIN_SIDEBAR_WIDTH, event.clientX));
-      setSidebarWidth(next);
-    };
-    const onUp = () => {
-      if (!draggingRef.current) return;
-      draggingRef.current = false;
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
-      setSidebarWidth((width) => {
-        localStorage.setItem(SIDEBAR_WIDTH_KEY, String(width));
-        return width;
-      });
-    };
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
-    return () => {
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onUp);
-    };
-  }, []);
-
   const meshBackground = useMemo(
     () =>
       darkMode
@@ -200,35 +158,37 @@ const App: React.FC = () => {
 
   return (
     <div
-      className="relative flex flex-col min-w-0 h-[100dvh] overflow-hidden bg-bg"
+      className="relative flex h-[100dvh] min-w-0 flex-col overflow-hidden bg-bg"
       style={{ backgroundImage: meshBackground }}
     >
       <div className="kd-grain" />
 
-      {/* Console body: sidebar (brand · stats · sources · queue) · workbench */}
-      <main
-        className="relative z-10 flex-1 min-h-0 min-w-0 flex flex-col md:flex-row gap-3 p-3 overflow-y-auto md:overflow-hidden"
-        style={{ '--sidebar-width': `${sidebarWidth}px` } as React.CSSProperties}
-      >
-        {/* Sidebar */}
-        <Panel delay={0} className="w-full md:w-[var(--sidebar-width)] md:flex-shrink-0">
-          {/* Brand */}
-          <div className="flex-shrink-0 p-5 pb-4 flex items-center justify-between gap-2 min-w-0">
-            <div className="flex items-center gap-2.5 min-w-0">
+      <main className="relative z-10 flex min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-hidden p-4">
+        <Panel delay={0} className="flex-shrink-0">
+          <div className="flex min-w-0 items-center justify-between gap-4 px-1 py-1">
+            <div className="flex min-w-0 items-center gap-3">
               <img
                 src={logo}
                 alt="KeepDir"
-                className="w-7 h-7 rounded-[var(--radius-md)] object-cover flex-shrink-0"
+                className="h-8 w-8 flex-shrink-0 rounded-[var(--radius-md)] object-cover"
               />
-              <div className="min-w-0 pr-1">
-                <div className="font-display font-semibold text-[15px] leading-none tracking-tight truncate">
+              <div className="min-w-0">
+                <div className="truncate font-display text-[16px] font-semibold leading-tight">
                   KeepDir
                 </div>
-                <div className="font-mono text-[9px] uppercase tracking-[0.08em] text-text-secondary leading-none mt-0.5 truncate">
-                  Rules-first file automation
+                <div className="truncate font-mono text-[10px] uppercase leading-tight tracking-[0.1em] text-text-secondary">
+                  Folder cleanup
                 </div>
               </div>
             </div>
+
+            <div className="hidden min-w-0 items-center gap-2 lg:flex">
+              <HeaderMetric label="folders" value={stats.foldersEnabled} />
+              <HeaderMetric label="rules" value={stats.rulesEnabled} />
+              <HeaderMetric label="ready" value={stats.queuePending} accent />
+              <HeaderMetric label="check" value={stats.queueAttention} warning />
+            </div>
+
             <Tooltip title={darkMode ? 'Light mode' : 'Dark mode'}>
               <IconButton
                 label={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}
@@ -239,30 +199,33 @@ const App: React.FC = () => {
               </IconButton>
             </Tooltip>
           </div>
+        </Panel>
 
-          {/* Engine + stats */}
-          <div className="flex-shrink-0 px-5 pb-4 pt-2">
-            <StatDeck stats={stats} />
-          </div>
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-5 overflow-y-auto lg:grid lg:grid-cols-[260px_minmax(0,1fr)] lg:overflow-hidden xl:grid-cols-[280px_minmax(0,1fr)_430px]">
+          <aside className="flex min-h-fit min-w-0 flex-col gap-5 lg:min-h-0">
+            <Panel delay={40} className="flex-shrink-0">
+              <div className="p-1">
+                <StatDeck stats={stats} />
+              </div>
+            </Panel>
 
-          {/* Sources + Queue: each scrolls within a bounded flex column */}
-          <div className="flex-1 min-h-0 flex flex-col">
-            {/* Sources */}
-            <div className="flex-shrink-0 px-5 pt-1 pb-2">
-              <Eyebrow>Sources</Eyebrow>
-            </div>
-            <div className="flex-shrink-1 min-h-0 max-h-[45%] overflow-y-auto px-3 pb-3">
-              <WatchFoldersSettings workspaceId={DEFAULT_WORKSPACE_ID} />
-            </div>
+            <Panel delay={70} className="min-h-[260px] lg:flex-1">
+              <div className="flex-shrink-0 px-1 pb-3 pt-1">
+                <Eyebrow>Sources</Eyebrow>
+              </div>
+              <div className="min-h-0 flex-1 overflow-auto">
+                <WatchFoldersSettings workspaceId={DEFAULT_WORKSPACE_ID} />
+              </div>
+            </Panel>
+          </aside>
 
-            {/* Queue: header + scrollable content (footer is portaled to sidebar bottom) */}
-            <div className="flex-1 min-h-0 flex flex-col border-t border-black/[0.08] dark:border-white/[0.08] pt-2.5">
+          <section className="min-h-[520px] min-w-0">
+            <Panel delay={90} className="h-full">
               <PanelHeader
-                eyebrow="Review · live"
-                title="Action Queue"
-                badge={`${stats.queueTotal} queued`}
-                compact
-                divider={false}
+                eyebrow="Review"
+                title="Queue"
+                badge={`${stats.queueTotal}`}
+                divider
                 actions={
                   <Checkbox
                     checked={showHistory}
@@ -272,50 +235,71 @@ const App: React.FC = () => {
                   />
                 }
               />
-              <div className="flex-1 min-h-0">
-                <RuleActionsQueue
+              <RuleActionsQueue
+                workspaceId={DEFAULT_WORKSPACE_ID}
+                embedded
+                showHistory={showHistory}
+                onShowHistoryChange={setShowHistory}
+              />
+            </Panel>
+          </section>
+
+          <aside className="min-h-[520px] min-w-0 lg:col-span-2 xl:col-span-1">
+            <Panel delay={120} className="h-full">
+              <div className="min-h-0 flex-1 overflow-auto p-1">
+                <AutomationRulesSettings
                   workspaceId={DEFAULT_WORKSPACE_ID}
-                  embedded
-                  showHistory={showHistory}
-                  onShowHistoryChange={setShowHistory}
-                  footerTarget={footerEl}
+                  showQueue={false}
+                  showWatchFolders={false}
                 />
               </div>
-            </div>
-          </div>
-
-          {/* Footer: action controls docked at sidebar bottom */}
-          <div ref={setFooterEl} className="flex-shrink-0 border-t border-border" />
-        </Panel>
-
-        {/* Resize handle (desktop) */}
-        <div
-          role="separator"
-          aria-orientation="vertical"
-          aria-label="Resize sidebar"
-          onMouseDown={startResize}
-          className="hidden md:block flex-shrink-0 w-2 -mx-1 cursor-col-resize group relative"
-        >
-          <div className="absolute inset-y-0 left-1/2 -translate-x-1/2 w-px bg-border transition-colors duration-300 group-hover:bg-text-secondary/40 group-active:bg-text-secondary/60" />
+            </Panel>
+          </aside>
         </div>
-
-        {/* Workbench */}
-        <Panel delay={70} className="md:flex-1 md:min-w-0">
-          <div className="flex-1 min-h-0 overflow-auto p-4 h-full">
-            <AutomationRulesSettings
-              workspaceId={DEFAULT_WORKSPACE_ID}
-              showQueue={false}
-              showWatchFolders={false}
-            />
-          </div>
-        </Panel>
       </main>
     </div>
   );
 };
 
 function Eyebrow({ children }: { children?: React.ReactNode }) {
-  return <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-text-secondary">{children || 'Sources'}</span>;
+  return (
+    <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-text-secondary">
+      {children || 'Sources'}
+    </span>
+  );
+}
+
+function HeaderMetric({
+  label,
+  value,
+  accent = false,
+  warning = false,
+}: {
+  label: string;
+  value: number;
+  accent?: boolean;
+  warning?: boolean;
+}) {
+  return (
+    <div className="flex items-baseline gap-2 px-1.5 py-1">
+      <span
+        className={cn(
+          'font-display text-[18px] font-semibold leading-none tabular-nums',
+          accent && value > 0 && 'text-accent',
+          warning && value > 0 && 'text-warning'
+        )}
+      >
+        {value}
+      </span>
+      <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-text-secondary">
+        {label}
+      </span>
+    </div>
+  );
+}
+
+function cn(...classes: (string | false | undefined)[]) {
+  return classes.filter(Boolean).join(' ');
 }
 
 export default App;

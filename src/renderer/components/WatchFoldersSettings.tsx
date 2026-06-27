@@ -204,7 +204,7 @@ const WatchFoldersSettings: React.FC<WatchFoldersSettingsProps> = ({ workspaceId
       </div>
 
       {!loading && folders.length === 0 && (
-        <div className="border-t border-black/[0.08] dark:border-white/[0.08] pt-3 mt-0.5">
+        <div className="pt-2">
           <Folder size={20} weight="light" className="text-text-secondary mb-2" />
           <div className="font-display font-semibold text-[13.5px]">Nothing watched yet</div>
           <div className="text-sm text-text-secondary mt-1 leading-relaxed">

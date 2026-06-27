@@ -37,7 +37,8 @@ export type RuleActionStatus =
   | 'skipped'
   | 'stale'
   | 'conflict'
-  | 'error';
+  | 'error'
+  | 'undone';
 
 export interface RuleTraceItem {
   ruleId: string;
@@ -62,6 +63,8 @@ export interface RuleAction {
   fileSize: number;
   fileMtimeMs: number;
   errorMessage?: string | null;
+  appliedSourcePath?: string | null;
+  appliedTargetPath?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -72,6 +75,18 @@ export interface KeepDirAPI {
   ) => Promise<ApiResult & { apiKey?: string | null }>;
   saveRuleAssistantKey: (provider: string, apiKey: string) => Promise<ApiResult>;
   deleteRuleAssistantKey: (provider: string) => Promise<ApiResult>;
+  fetchAssistantModels: (
+    provider: string,
+    apiKey: string,
+    endpoint: string
+  ) => Promise<ApiResult & { models?: string[] }>;
+  draftRuleWithAssistant: (
+    provider: string,
+    apiKey: string,
+    endpoint: string,
+    model: string,
+    description: string
+  ) => Promise<ApiResult & { content?: string }>;
   getWorkspaceSetting: (workspaceId: string, key: string) => Promise<unknown>;
   saveWorkspaceSetting: (
     workspaceId: string,
@@ -94,6 +109,11 @@ export interface KeepDirAPI {
     folderId: string,
     enabled: boolean
   ) => Promise<ApiResult>;
+  simulateRuleAction: (
+    workspaceId: string,
+    fileName: string,
+    folderPath?: string | null
+  ) => Promise<ApiResult & { action?: RuleAction }>;
   getRuleActions: (
     workspaceId: string,
     options?: { includeHistory?: boolean }
@@ -102,8 +122,17 @@ export interface KeepDirAPI {
     workspaceId: string,
     actionIds: string[]
   ) => Promise<ApiResult & { results?: Array<{ id: string; success: boolean; error?: string }> }>;
+  undoRuleActions: (
+    workspaceId: string,
+    actionIds: string[]
+  ) => Promise<ApiResult & { results?: Array<{ id: string; success: boolean; error?: string }> }>;
   skipRuleActions: (workspaceId: string, actionIds: string[]) => Promise<ApiResult>;
   refreshRuleActions: (workspaceId: string, actionIds: string[]) => Promise<ApiResult>;
+  renameRuleActionTarget: (
+    workspaceId: string,
+    actionId: string,
+    targetName: string
+  ) => Promise<ApiResult & { action?: RuleAction }>;
   getAppVersion: () => Promise<string>;
   openLatestRelease: () => Promise<ApiResult>;
   selectDirectory: () => Promise<string | null>;

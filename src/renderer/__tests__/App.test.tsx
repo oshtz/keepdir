@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, fireEvent, act } from '@testing-library/react';
+import { render, screen, fireEvent, act, within } from '@testing-library/react';
 import App, {
   DEFAULT_MONO_ACCENT_COLOR,
   SIGNAL_ACCENT_COLOR,
@@ -62,7 +62,7 @@ describe('App', () => {
     await renderApp();
 
     expect(screen.getByText('KeepDir')).toBeInTheDocument();
-    expect(screen.getByText('Rules-first file automation')).toBeInTheDocument();
+    expect(screen.getByText('Folder cleanup')).toBeInTheDocument();
     expect(screen.getByTestId('watch-folders-settings')).toBeInTheDocument();
     expect(screen.getByTestId('automation-rules-settings')).toBeInTheDocument();
     expect(screen.getByTestId('rule-actions-queue')).toBeInTheDocument();
@@ -71,10 +71,10 @@ describe('App', () => {
   it('renders the command deck with live stat tiles', async () => {
     await renderApp();
 
-    expect(screen.getByTestId('stat-deck')).toBeInTheDocument();
-    expect(screen.getByText('Watching')).toBeInTheDocument();
-    expect(screen.getByText('Queue')).toBeInTheDocument();
-    expect(screen.getByText('Engine')).toBeInTheDocument();
+    const statDeck = within(screen.getByTestId('stat-deck'));
+    expect(statDeck.getByText('Watching')).toBeInTheDocument();
+    expect(statDeck.getByText('Queue')).toBeInTheDocument();
+    expect(statDeck.getByText('Engine')).toBeInTheDocument();
   });
 
   it('persists dark mode preference', async () => {

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { ArrowDown, ArrowUp, CaretDown, CaretUp, Copy, MagicWand, Plus, Trash } from 'phosphor-react';
+import { ArrowDown, ArrowUp, CaretDown, CaretUp, Copy, MagicWand, Play, Plus, Trash } from 'phosphor-react';
 import {
   Alert,
   Button,
@@ -13,7 +13,7 @@ import {
 } from './ui';
 import RuleActionsQueue from './RuleActionsQueue';
 import WatchFoldersSettings from './WatchFoldersSettings';
-import type { FileRule } from '../appApi';
+import type { FileRule, RuleAction } from '../appApi';
 import { cn } from '../utils';
 
 const AUTOMATION_RULES_KEY = 'automationRules';
@@ -29,6 +29,14 @@ function loadCollapsedRuleIds(): Set<string> {
     return new Set(parsed.filter((value): value is string => typeof value === 'string'));
   } catch {
     return new Set();
+  }
+}
+
+function hasCollapsedRulePreference() {
+  try {
+    return localStorage.getItem(COLLAPSED_RULES_KEY) !== null;
+  } catch {
+    return true;
   }
 }
 
@@ -60,9 +68,6 @@ const RULE_ASSISTANT_PROVIDERS: Record<
   lmstudio: { label: 'LM Studio', endpoint: 'http://localhost:1234/v1', model: 'openai/gpt-oss-20b' },
   ollama: { label: 'Ollama', endpoint: 'http://localhost:11434/v1', model: 'gemma3' },
 };
-
-const RULE_ASSISTANT_PROMPT =
-  'Draft one or more KeepDir FileRule objects as JSON only. Return either one object or an array. Allowed keys: name, match.nameContains, match.extensionIn, match.sourceUrlContains, match.downloadedFromContains, action.targetFolder, action.targetNameTemplate, action.ask, stopOnMatch. Do not invent other keys. Use relative target folders. If the user asks to move or sort files, set action.targetFolder. Set action.ask true when the request is ambiguous.';
 
 interface AutomationRulesSettingsProps {
   workspaceId?: string | null;
@@ -201,61 +206,20 @@ function normalizeAssistantRules(raw: any, order: number): FileRule[] {
   return items.map((item: any, index: number) => normalizeAssistantRule(item, order + index));
 }
 
-function extractModelNames(provider: RuleAssistantProvider, data: any) {
-  const items =
-    provider === 'google'
-      ? data?.models
-      : Array.isArray(data?.data)
-        ? data.data
-        : data?.models;
-
-  if (!Array.isArray(items)) {
-    return [];
-  }
-
-  return Array.from(
-    new Set(
-      items
-        .filter(
-          (item: any) =>
-            provider !== 'google' || item?.supportedGenerationMethods?.includes('generateContent')
-        )
-        .map((item: any) => item?.id || item?.name)
-        .filter((name: unknown): name is string => typeof name === 'string' && Boolean(name.trim()))
-        .map((name) => name.replace(/^models\//, ''))
-    )
-  ).sort();
-}
-
 async function fetchAssistantModels(options: {
   provider: RuleAssistantProvider;
   apiKey: string;
   endpoint: string;
 }) {
-  const endpoint = options.endpoint.replace(/\/+$/, '');
-  const apiKey = options.apiKey.trim();
-  const headers: Record<string, string> = {};
-
-  if (options.provider === 'anthropic') {
-    headers['anthropic-version'] = '2023-06-01';
-    headers['anthropic-dangerous-direct-browser-access'] = 'true';
-    if (apiKey) {
-      headers['x-api-key'] = apiKey;
-    }
-  } else if (options.provider === 'google') {
-    if (apiKey) {
-      headers['x-goog-api-key'] = apiKey;
-    }
-  } else if (apiKey) {
-    headers.Authorization = `Bearer ${apiKey}`;
+  const result = await window.keepdirAPI.fetchAssistantModels(
+    options.provider,
+    options.apiKey,
+    options.endpoint
+  );
+  if (result.error) {
+    throw new Error(result.error);
   }
-
-  const response = await fetch(`${endpoint}/models`, { headers });
-  const data = await response.json();
-  if (!response.ok) {
-    throw new Error(data?.error?.message || 'Failed to load models');
-  }
-  return extractModelNames(options.provider, data);
+  return result.models || [];
 }
 
 async function draftRuleWithAssistant(options: {
@@ -266,80 +230,20 @@ async function draftRuleWithAssistant(options: {
   description: string;
   order: number;
 }) {
-  const endpoint = options.endpoint.replace(/\/+$/, '');
-  const apiKey = options.apiKey.trim();
-  const model = options.model.trim();
-  let response: Response;
-
-  if (options.provider === 'anthropic') {
-    response = await fetch(`${endpoint}/messages`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true',
-        ...(apiKey ? { 'x-api-key': apiKey } : {}),
-      },
-      body: JSON.stringify({
-        model,
-        max_tokens: 800,
-        temperature: 0,
-        system: RULE_ASSISTANT_PROMPT,
-        messages: [{ role: 'user', content: options.description }],
-      }),
-    });
-  } else if (options.provider === 'google') {
-    response = await fetch(`${endpoint}/models/${encodeURIComponent(model)}:generateContent`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(apiKey ? { 'x-goog-api-key': apiKey } : {}),
-      },
-      body: JSON.stringify({
-        contents: [
-          {
-            role: 'user',
-            parts: [
-              { text: `${RULE_ASSISTANT_PROMPT}\n\nUser request:\n${options.description}` },
-            ],
-          },
-        ],
-        generationConfig: { temperature: 0, responseMimeType: 'application/json' },
-      }),
-    });
-  } else {
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (apiKey) {
-      headers.Authorization = `Bearer ${apiKey}`;
-    }
-    response = await fetch(`${endpoint}/chat/completions`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({
-        model,
-        temperature: 0,
-        messages: [
-          { role: 'system', content: RULE_ASSISTANT_PROMPT },
-          { role: 'user', content: options.description },
-        ],
-      }),
-    });
+  const result = await window.keepdirAPI.draftRuleWithAssistant(
+    options.provider,
+    options.apiKey,
+    options.endpoint,
+    options.model,
+    options.description
+  );
+  if (result.error) {
+    throw new Error(result.error);
   }
-  const data = await response.json();
-  if (!response.ok) {
-    throw new Error(data?.error?.message || 'Rule assistant request failed');
-  }
-  const content =
-    options.provider === 'anthropic'
-      ? data?.content?.find((item: any) => typeof item?.text === 'string')?.text
-      : options.provider === 'google'
-        ? data?.candidates?.[0]?.content?.parts?.find((item: any) => typeof item?.text === 'string')
-            ?.text
-        : data?.choices?.[0]?.message?.content;
-  if (typeof content !== 'string') {
+  if (typeof result.content !== 'string') {
     throw new Error('Rule assistant returned no content');
   }
-  return normalizeAssistantRules(parseJsonValue(content), options.order);
+  return normalizeAssistantRules(parseJsonValue(result.content), options.order);
 }
 
 const AutomationRulesSettings: React.FC<AutomationRulesSettingsProps> = ({
@@ -363,6 +267,10 @@ const AutomationRulesSettings: React.FC<AutomationRulesSettingsProps> = ({
   const [assistantModelLoading, setAssistantModelLoading] = useState(false);
   const [assistantModelError, setAssistantModelError] = useState<string | null>(null);
   const [collapsedRuleIds, setCollapsedRuleIds] = useState<Set<string>>(() => loadCollapsedRuleIds());
+  const [simulationFileName, setSimulationFileName] = useState('invoice.pdf');
+  const [simulationResult, setSimulationResult] = useState<RuleAction | null>(null);
+  const [simulationLoading, setSimulationLoading] = useState(false);
+  const [simulationError, setSimulationError] = useState<string | null>(null);
 
   const toggleRuleCollapsed = useCallback((ruleId: string) => {
     setCollapsedRuleIds((previous) => {
@@ -399,7 +307,11 @@ const AutomationRulesSettings: React.FC<AutomationRulesSettingsProps> = ({
     setLoading(true);
     try {
       const value = await window.keepdirAPI.getWorkspaceSetting(workspaceId, AUTOMATION_RULES_KEY);
-      setRules(normalizeOrders(Array.isArray(value) ? (value as FileRule[]) : []));
+      const ordered = normalizeOrders(Array.isArray(value) ? (value as FileRule[]) : []);
+      setRules(ordered);
+      if (!hasCollapsedRulePreference()) {
+        setCollapsedRuleIds(new Set(ordered.map((rule) => rule.id)));
+      }
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load rules');
@@ -635,37 +547,59 @@ const AutomationRulesSettings: React.FC<AutomationRulesSettingsProps> = ({
     void saveRules(nextRules);
   };
 
+  const runSimulation = async () => {
+    if (!workspaceId || !simulationFileName.trim()) {
+      return;
+    }
+    setSimulationLoading(true);
+    setSimulationError(null);
+    try {
+      const result = await window.keepdirAPI.simulateRuleAction(workspaceId, simulationFileName);
+      if (result.error) {
+        setSimulationError(result.error);
+        setSimulationResult(null);
+      } else {
+        setSimulationResult(result.action || null);
+      }
+    } catch (err) {
+      setSimulationError(err instanceof Error ? err.message : 'Failed to test rule');
+      setSimulationResult(null);
+    } finally {
+      setSimulationLoading(false);
+    }
+  };
+
   return (
     <div className="flex flex-col gap-4 min-w-0 min-h-full">
       <div className="flex items-center gap-2">
-        <div className="p-1.5 rounded-[var(--radius-md)] bg-accent/10 text-accent-ink dark:text-accent">
+        <div className="text-text-secondary">
           <ListChecksIcon />
         </div>
-        <h2 className="font-display font-semibold text-xl tracking-[-0.01em] text-balance">Automation Rules</h2>
+        <h2 className="font-display font-semibold text-xl tracking-[-0.01em] text-balance">Rules</h2>
       </div>
 
       {error && <Alert severity="error">{error}</Alert>}
 
       {showWatchFolders && <WatchFoldersSettings workspaceId={workspaceId} />}
 
-      <div className="kd-card p-4">
-        <div className="font-header font-semibold text-base">Rule assistant</div>
+      <div className="flex flex-col gap-3">
+        <div className="font-header font-semibold text-base">Assistant</div>
         {assistantMessage && (
-          <Alert severity="info" className="mt-2">
+          <Alert severity="info">
             {assistantMessage}
           </Alert>
         )}
         <TextArea
-          label="Describe rule"
+          label="Tell KeepDir what to move"
           value={assistantDescription}
           onChange={(event) => setAssistantDescription(event.target.value)}
-          placeholder="Move screenshots to Media/Images, archives to Archives, installers to Apps"
-          className="mt-3"
+          placeholder="Screenshots to Images, ZIPs to Archives"
         />
-        <div className="flex flex-wrap items-center gap-3 mt-3">
+        <div className="flex flex-wrap items-center gap-3">
           <Button
             variant="primary"
             leftIcon={<MagicWand size={16} weight="light" />}
+            aria-label="Draft rule"
             onClick={draftRule}
             disabled={
               !workspaceId ||
@@ -675,25 +609,27 @@ const AutomationRulesSettings: React.FC<AutomationRulesSettingsProps> = ({
               !assistantModel.trim()
             }
           >
-            Draft Rule
+            Draft
           </Button>
           <Button
             size="sm"
             variant="ghost"
+            aria-label="Assistant settings"
             onClick={() => setAssistantSettingsOpen((open) => !open)}
             rightIcon={
               assistantSettingsOpen ? <CaretUp size={14} weight="light" /> : <CaretDown size={14} weight="light" />
             }
           >
-            Assistant Settings
+            Settings
           </Button>
         </div>
 
         {assistantSettingsOpen && (
           <div className="mt-4 flex flex-col gap-3">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-[170px_1fr_1fr_1fr] gap-3">
+            <div className="grid grid-cols-1 gap-3">
               <Select
-                label="Rule assistant provider"
+                label="Provider"
+                aria-label="Rule assistant provider"
                 value={assistantProvider}
                 onChange={(event) => changeAssistantProvider(event.target.value as RuleAssistantProvider)}
                 options={Object.entries(RULE_ASSISTANT_PROVIDERS).map(([value, provider]) => ({
@@ -702,7 +638,8 @@ const AutomationRulesSettings: React.FC<AutomationRulesSettingsProps> = ({
                 }))}
               />
               <Input
-                label="Rule assistant base URL"
+                label="Base URL"
+                aria-label="Rule assistant base URL"
                 value={assistantEndpoint}
                 onChange={(event) => {
                   const endpoint = event.target.value;
@@ -717,7 +654,8 @@ const AutomationRulesSettings: React.FC<AutomationRulesSettingsProps> = ({
                 }}
               />
               <Combobox
-                label="Rule assistant model"
+                label="Model"
+                aria-label="Rule assistant model"
                 value={assistantModel}
                 onChange={(event) => {
                   const model = event.target.value;
@@ -733,7 +671,8 @@ const AutomationRulesSettings: React.FC<AutomationRulesSettingsProps> = ({
                 options={assistantModels}
               />
               <Input
-                label="Rule assistant API key"
+                label="API key"
+                aria-label="Rule assistant API key"
                 type="password"
                 value={assistantApiKey}
                 onChange={(event) => {
@@ -763,29 +702,62 @@ const AutomationRulesSettings: React.FC<AutomationRulesSettingsProps> = ({
               <span className="text-sm text-text-secondary">
                 {assistantModelError ||
                   (assistantKeySaved
-                    ? 'API key saved in OS keychain.'
-                    : 'API key saves to OS keychain on blur, model load, or draft.')}
+                    ? 'Key saved.'
+                    : 'Saved when you draft or load models.')}
               </span>
             </div>
           </div>
         )}
       </div>
 
+      <div className="flex flex-col gap-3">
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div className="min-w-0">
+            <div className="font-header font-semibold text-base">Try a file</div>
+          </div>
+          <div className="flex items-end gap-2 min-w-[min(100%,360px)]">
+            <Input
+              label="File name"
+              value={simulationFileName}
+              onChange={(event) => setSimulationFileName(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  void runSimulation();
+                }
+              }}
+              placeholder="invoice.pdf"
+              className="flex-1"
+            />
+            <Button
+              variant="secondary"
+              leftIcon={<Play size={15} weight="light" />}
+              onClick={runSimulation}
+              disabled={!workspaceId || simulationLoading || !simulationFileName.trim()}
+            >
+              Test
+            </Button>
+          </div>
+        </div>
+        {simulationError && <Alert severity="error">{simulationError}</Alert>}
+        {simulationResult && <RuleSimulationPreview action={simulationResult} />}
+      </div>
+
       <div className="flex items-center justify-between gap-4 flex-wrap min-w-0">
         <div className="min-w-0 flex-1">
-          <div className="font-header font-semibold text-base">Ordered Rules</div>
+          <div className="font-header font-semibold text-base">Rules</div>
           <div className="text-sm text-text-secondary">
-            Rules are evaluated top to bottom. Disable ask-only rules when you want files to move.
+            First match wins.
           </div>
         </div>
         <Button
           variant="primary"
           leftIcon={<Plus size={16} weight="light" />}
+          aria-label="Add rule"
           onClick={addRule}
           disabled={!workspaceId || loading}
           className="flex-shrink-0"
         >
-          Add Rule
+          Add
         </Button>
       </div>
 
@@ -969,7 +941,7 @@ const AutomationRulesSettings: React.FC<AutomationRulesSettingsProps> = ({
       </div>
 
       {!loading && rules.length === 0 && (
-        <div className="max-w-[420px] border-t border-border pt-4 mt-2">
+        <div className="max-w-[420px] pt-2">
           <div className="font-header font-semibold text-sm">No rules yet</div>
           <div className="text-sm text-text-secondary mt-1 leading-relaxed">
             Draft rules with the assistant, then enable only the ones you trust.
@@ -979,8 +951,7 @@ const AutomationRulesSettings: React.FC<AutomationRulesSettingsProps> = ({
 
       {showQueue && (
         <>
-          <div className="h-px bg-black/[0.08] dark:bg-white/[0.08]" />
-          <div className="font-header font-semibold text-base mb-1">Dry-run Queue</div>
+          <div className="font-header font-semibold text-base mb-1">Queue</div>
           <RuleActionsQueue workspaceId={workspaceId} embedded />
         </>
       )}
@@ -991,12 +962,12 @@ const AutomationRulesSettings: React.FC<AutomationRulesSettingsProps> = ({
 function RuleSummary({ rule }: { rule: FileRule }) {
   const match = rule.match;
   const matchParts: string[] = [];
+  if (match.nameContains) matchParts.push(match.nameContains);
   if (match.extensionIn && match.extensionIn.length) matchParts.push(match.extensionIn.join(', '));
-  if (match.nameContains) matchParts.push(`name~${match.nameContains}`);
-  if (match.sourceUrlContains) matchParts.push(`url~${match.sourceUrlContains}`);
-  if (match.downloadedFromContains) matchParts.push(`from~${match.downloadedFromContains}`);
+  if (match.sourceUrlContains) matchParts.push(`from ${match.sourceUrlContains}`);
+  if (match.downloadedFromContains) matchParts.push(`from ${match.downloadedFromContains}`);
   const matchText = matchParts.length ? matchParts.join(' · ') : 'matches anything';
-  const target = rule.action.targetFolder || '(ask)';
+  const target = rule.action.targetFolder || 'Choose destination';
   const template = rule.action.targetNameTemplate ? ` · ${rule.action.targetNameTemplate}` : '';
   const flags: string[] = [];
   if (rule.action.ask) flags.push('ask');
@@ -1016,6 +987,50 @@ function RuleSummary({ rule }: { rule: FileRule }) {
       ))}
     </div>
   );
+}
+
+function RuleSimulationPreview({ action }: { action: RuleAction }) {
+  const matched = action.ruleTrace.filter((item) => item.matched);
+  const trace = matched.length
+    ? matched.map((item) => `${item.ruleName}: ${item.reasons.join(', ')}`).join(' | ')
+    : action.errorMessage || 'No rule matched';
+  const isReady = action.status === 'pending';
+  const matchedLabel = matched[0]?.ruleName ? `Matched ${matched[0].ruleName}` : 'No match';
+  return (
+    <div
+      className="mt-3 rounded-[var(--radius-md)] bg-black/[0.035] dark:bg-white/[0.045] p-3 font-mono text-[11px] leading-relaxed"
+      title={trace}
+    >
+      <div className="flex items-center justify-between gap-3 min-w-0">
+        <div className="min-w-0 truncate">
+          <span className="text-text font-semibold">{action.originalName}</span>
+          <span className="text-text-secondary"> -&gt; </span>
+          <span className="text-text-secondary">{compactPath(action.targetPath)}</span>
+        </div>
+        <span
+          className={cn(
+            'flex-shrink-0 rounded-[var(--radius-sm)] px-2 py-0.5 uppercase tracking-[0.08em]',
+            isReady ? 'bg-accent/15 text-accent-ink dark:text-accent' : 'bg-warning/15 text-warning'
+          )}
+        >
+          {isReady ? 'ready' : 'check'}
+        </span>
+      </div>
+      <div className="mt-1.5 text-text-secondary truncate">{matchedLabel}</div>
+      {action.errorMessage && <div className="mt-1 text-danger truncate">{action.errorMessage}</div>}
+    </div>
+  );
+}
+
+function compactPath(path?: string | null) {
+  if (!path) {
+    return 'Choose destination';
+  }
+  const parts = path.split(/[\\/]/).filter(Boolean);
+  if (parts.length <= 2) {
+    return path;
+  }
+  return parts.slice(-2).join('/');
 }
 
 function ListChecksIcon() {

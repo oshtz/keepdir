@@ -21,6 +21,8 @@ use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
 const AUTOMATION_RULES_KEY: &str = "automationRules";
 const KEYCHAIN_SERVICE: &str = "KeepDir Rule Assistant";
 const LATEST_RELEASE_URL: &str = "https://github.com/oshtz/keepdir/releases/latest";
+const RULE_ASSISTANT_PROMPT: &str =
+    "Draft one or more KeepDir FileRule objects as JSON only. Return either one object or an array. Allowed keys: name, match.nameContains, match.extensionIn, match.sourceUrlContains, match.downloadedFromContains, action.targetFolder, action.targetNameTemplate, action.ask, stopOnMatch. Do not invent other keys. Use relative target folders. If the user asks to move or sort files, set action.targetFolder. Set action.ask true when the request is ambiguous.";
 const PENDING_TRAY_ICON_RGBA: &[u8] = include_bytes!("../../assets/tray-pending.rgba");
 const PENDING_TRAY_ICON_SIZE: u32 = 64;
 const TRAY_ID: &str = "main";
@@ -122,6 +124,8 @@ struct RuleAction {
     file_size: u64,
     file_mtime_ms: u128,
     error_message: Option<String>,
+    applied_source_path: Option<String>,
+    applied_target_path: Option<String>,
     created_at: String,
     updated_at: String,
 }
@@ -157,13 +161,30 @@ fn load_store(app: &AppHandle) -> Result<Store, String> {
         return Ok(Store::default());
     }
     let text = fs::read_to_string(path).map_err(|error| error.to_string())?;
-    serde_json::from_str(&text).map_err(|error| error.to_string())
+    match serde_json::from_str(&text) {
+        Ok(store) => Ok(store),
+        Err(error) => {
+            let backup = store_path(app)?.with_extension("json.bak");
+            if !backup.exists() {
+                return Err(error.to_string());
+            }
+            let backup_text = fs::read_to_string(backup).map_err(|error| error.to_string())?;
+            serde_json::from_str(&backup_text).map_err(|_| error.to_string())
+        }
+    }
 }
 
 fn save_store(app: &AppHandle, store: &Store) -> Result<(), String> {
     let path = store_path(app)?;
+    let backup = path.with_extension("json.bak");
+    let tmp = path.with_extension("json.tmp");
     let text = serde_json::to_string_pretty(store).map_err(|error| error.to_string())?;
-    fs::write(path, text).map_err(|error| error.to_string())
+    fs::write(&tmp, text).map_err(|error| error.to_string())?;
+    if path.exists() {
+        fs::copy(&path, backup).map_err(|error| error.to_string())?;
+        fs::remove_file(&path).map_err(|error| error.to_string())?;
+    }
+    fs::rename(tmp, path).map_err(|error| error.to_string())
 }
 
 fn now_ms() -> u128 {
@@ -498,6 +519,8 @@ fn evaluate_rule_action(
         file_size: file_snapshot.size,
         file_mtime_ms: file_snapshot.mtime_ms,
         error_message: None,
+        applied_source_path: None,
+        applied_target_path: None,
         created_at: timestamp.clone(),
         updated_at: timestamp,
     };
@@ -614,7 +637,7 @@ fn action_id(file_path: &Path, file_snapshot: &FileSnapshot) -> String {
 }
 
 fn terminal_status(status: &str) -> bool {
-    matches!(status, "applied" | "skipped" | "stale")
+    matches!(status, "applied" | "skipped" | "stale" | "undone")
 }
 
 fn queue_file(
@@ -995,6 +1018,117 @@ fn rule_assistant_key_entry(provider: &str) -> Result<keyring::Entry, String> {
     }
 }
 
+fn assistant_api_key(provider: &str, api_key: &str) -> Result<String, String> {
+    let api_key = api_key.trim();
+    if !api_key.is_empty() {
+        return Ok(api_key.to_string());
+    }
+    match rule_assistant_key_entry(provider)?.get_password() {
+        Ok(saved) => Ok(saved),
+        Err(keyring::Error::NoEntry) => Ok(String::new()),
+        Err(error) => Err(error.to_string()),
+    }
+}
+
+fn endpoint_base(endpoint: &str) -> Result<String, String> {
+    let endpoint = endpoint.trim().trim_end_matches('/');
+    if endpoint.is_empty() {
+        Err("Rule assistant base URL is empty".to_string())
+    } else {
+        Ok(endpoint.to_string())
+    }
+}
+
+fn with_assistant_auth(
+    mut request: reqwest::RequestBuilder,
+    provider: &str,
+    api_key: &str,
+) -> reqwest::RequestBuilder {
+    if provider == "anthropic" {
+        request = request.header("anthropic-version", "2023-06-01");
+        if !api_key.is_empty() {
+            request = request.header("x-api-key", api_key);
+        }
+    } else if provider == "google" {
+        if !api_key.is_empty() {
+            request = request.header("x-goog-api-key", api_key);
+        }
+    } else if !api_key.is_empty() {
+        request = request.header("Authorization", format!("Bearer {api_key}"));
+    }
+    request
+}
+
+fn assistant_error_message(data: &Value, fallback: String) -> String {
+    data.pointer("/error/message")
+        .and_then(Value::as_str)
+        .or_else(|| data.get("error").and_then(Value::as_str))
+        .unwrap_or(&fallback)
+        .to_string()
+}
+
+async fn read_json_response(response: reqwest::Response) -> Result<Value, String> {
+    let status = response.status();
+    let text = response.text().await.map_err(|error| error.to_string())?;
+    let data = serde_json::from_str::<Value>(&text).unwrap_or_else(|_| json!({ "text": text }));
+    if !status.is_success() {
+        return Err(assistant_error_message(
+            &data,
+            format!("Rule assistant request failed: {status}"),
+        ));
+    }
+    Ok(data)
+}
+
+fn extract_model_names(provider: &str, data: &Value) -> Vec<String> {
+    let items = if provider == "google" {
+        data.get("models")
+    } else {
+        data.get("data").filter(|value| value.is_array()).or_else(|| data.get("models"))
+    };
+    let mut names = items
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter(|item| {
+            provider != "google"
+                || item
+                    .get("supportedGenerationMethods")
+                    .and_then(Value::as_array)
+                    .map(|methods| methods.iter().any(|method| method == "generateContent"))
+                    .unwrap_or(false)
+        })
+        .filter_map(|item| item.get("id").or_else(|| item.get("name")).and_then(Value::as_str))
+        .map(|name| name.trim_start_matches("models/").to_string())
+        .filter(|name| !name.trim().is_empty())
+        .collect::<Vec<_>>();
+    names.sort();
+    names.dedup();
+    names
+}
+
+fn extract_assistant_content(provider: &str, data: &Value) -> Option<String> {
+    if provider == "anthropic" {
+        return data
+            .get("content")?
+            .as_array()?
+            .iter()
+            .find_map(|item| item.get("text").and_then(Value::as_str))
+            .map(str::to_string);
+    }
+    if provider == "google" {
+        return data
+            .pointer("/candidates/0/content/parts")?
+            .as_array()?
+            .iter()
+            .find_map(|item| item.get("text").and_then(Value::as_str))
+            .map(str::to_string);
+    }
+    data.pointer("/choices/0/message/content")
+        .and_then(Value::as_str)
+        .map(str::to_string)
+}
+
 fn open_url(url: &str) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     let status = std::process::Command::new("cmd")
@@ -1054,6 +1188,88 @@ fn delete_rule_assistant_key(provider: String) -> Result<Value, String> {
         Ok(()) | Err(keyring::Error::NoEntry) => Ok(json!({ "success": true })),
         Err(error) => Err(error.to_string()),
     }
+}
+
+#[tauri::command]
+async fn fetch_assistant_models(
+    provider: String,
+    api_key: String,
+    endpoint: String,
+) -> Result<Value, String> {
+    rule_assistant_key_entry(&provider)?;
+    let endpoint = endpoint_base(&endpoint)?;
+    let api_key = assistant_api_key(&provider, &api_key)?;
+    let client = reqwest::Client::new();
+    let request = with_assistant_auth(client.get(format!("{endpoint}/models")), &provider, &api_key);
+    let data = read_json_response(request.send().await.map_err(|error| error.to_string())?).await?;
+    Ok(json!({ "success": true, "models": extract_model_names(&provider, &data) }))
+}
+
+#[tauri::command]
+async fn draft_rule_with_assistant(
+    provider: String,
+    api_key: String,
+    endpoint: String,
+    model: String,
+    description: String,
+) -> Result<Value, String> {
+    rule_assistant_key_entry(&provider)?;
+    let endpoint = endpoint_base(&endpoint)?;
+    let api_key = assistant_api_key(&provider, &api_key)?;
+    let model = model.trim();
+    if model.is_empty() {
+        return Err("Rule assistant model is empty".to_string());
+    }
+    if description.trim().is_empty() {
+        return Err("Rule description is empty".to_string());
+    }
+
+    let client = reqwest::Client::new();
+    let request = if provider == "anthropic" {
+        with_assistant_auth(
+            client.post(format!("{endpoint}/messages")).json(&json!({
+                "model": model,
+                "max_tokens": 800,
+                "temperature": 0,
+                "system": RULE_ASSISTANT_PROMPT,
+                "messages": [{ "role": "user", "content": description }]
+            })),
+            &provider,
+            &api_key,
+        )
+    } else if provider == "google" {
+        let model = model.trim_start_matches("models/");
+        with_assistant_auth(
+            client
+                .post(format!("{endpoint}/models/{model}:generateContent"))
+                .json(&json!({
+                    "contents": [{
+                        "role": "user",
+                        "parts": [{ "text": format!("{RULE_ASSISTANT_PROMPT}\n\nUser request:\n{description}") }]
+                    }],
+                    "generationConfig": { "temperature": 0, "responseMimeType": "application/json" }
+                })),
+            &provider,
+            &api_key,
+        )
+    } else {
+        with_assistant_auth(
+            client.post(format!("{endpoint}/chat/completions")).json(&json!({
+                "model": model,
+                "temperature": 0,
+                "messages": [
+                    { "role": "system", "content": RULE_ASSISTANT_PROMPT },
+                    { "role": "user", "content": description }
+                ]
+            })),
+            &provider,
+            &api_key,
+        )
+    };
+    let data = read_json_response(request.send().await.map_err(|error| error.to_string())?).await?;
+    let content = extract_assistant_content(&provider, &data)
+        .ok_or_else(|| "Rule assistant returned no content".to_string())?;
+    Ok(json!({ "success": true, "content": content }))
 }
 
 #[tauri::command]
@@ -1118,6 +1334,58 @@ fn get_watch_folders(app: AppHandle, workspace_id: String) -> Result<Value, Stri
         "success": true,
         "folders": store.watch_folders.get(&workspace_id).cloned().unwrap_or_default()
     }))
+}
+
+#[tauri::command]
+fn simulate_rule_action(
+    app: AppHandle,
+    workspace_id: String,
+    file_name: String,
+    folder_path: Option<String>,
+) -> Result<Value, String> {
+    let file_name = file_name.trim();
+    if file_name.is_empty() {
+        return Err("File name is empty".to_string());
+    }
+    let source_name = Path::new(file_name)
+        .file_name()
+        .and_then(|item| item.to_str())
+        .unwrap_or(file_name);
+
+    let _guard = store_guard()?;
+    let store = load_store(&app)?;
+    let folder_path = folder_path
+        .filter(|path| !path.trim().is_empty())
+        .map(PathBuf::from)
+        .or_else(|| {
+            store
+                .watch_folders
+                .get(&workspace_id)
+                .and_then(|folders| {
+                    folders
+                        .iter()
+                        .find(|folder| folder.enabled)
+                        .or_else(|| folders.first())
+                })
+                .map(|folder| PathBuf::from(&folder.path))
+        })
+        .unwrap_or_else(|| PathBuf::from("KeepDir Preview"));
+    let rules = normalized_rules(
+        store
+            .workspace_settings
+            .get(&workspace_id)
+            .and_then(|settings| settings.get(AUTOMATION_RULES_KEY)),
+    );
+    let action = evaluate_rule_action(
+        "simulation".to_string(),
+        &workspace_id,
+        &folder_path,
+        &folder_path.join(source_name),
+        &FileSnapshot::default(),
+        &rules,
+        &DownloadMetadata::default(),
+    );
+    Ok(json!({ "success": true, "action": action }))
 }
 
 #[tauri::command]
@@ -1267,6 +1535,36 @@ fn refresh_rule_actions(
 }
 
 #[tauri::command]
+fn rename_rule_action_target(
+    app: AppHandle,
+    workspace_id: String,
+    action_id: String,
+    target_name: String,
+) -> Result<Value, String> {
+    let _guard = store_guard()?;
+    let mut store = load_store(&app)?;
+    let updated = {
+        let actions = store
+            .rule_actions
+            .get_mut(&workspace_id)
+            .ok_or_else(|| "Rule action not found".to_string())?;
+        let action = actions
+            .iter_mut()
+            .find(|action| action.id == action_id)
+            .ok_or_else(|| "Rule action not found".to_string())?;
+        retarget_one(action, &target_name)?;
+        action.clone()
+    };
+    save_store(&app, &store)?;
+    set_tray_menu(&app, pending_rename_count(&store))?;
+    let _ = app.emit(
+        "rule-actions-changed",
+        json!({ "workspaceId": workspace_id }),
+    );
+    Ok(json!({ "success": true, "action": updated }))
+}
+
+#[tauri::command]
 fn apply_rule_actions(
     app: AppHandle,
     workspace_id: String,
@@ -1281,6 +1579,37 @@ fn apply_rule_actions(
             .filter(|action| action_ids.iter().any(|id| id == &action.id))
         {
             let result = apply_one(action);
+            results.push(json!({
+                "id": action.id,
+                "success": result.is_ok(),
+                "error": result.err()
+            }));
+        }
+    }
+    save_store(&app, &store)?;
+    set_tray_menu(&app, pending_rename_count(&store))?;
+    let _ = app.emit(
+        "rule-actions-changed",
+        json!({ "workspaceId": workspace_id }),
+    );
+    Ok(json!({ "success": true, "results": results }))
+}
+
+#[tauri::command]
+fn undo_rule_actions(
+    app: AppHandle,
+    workspace_id: String,
+    action_ids: Vec<String>,
+) -> Result<Value, String> {
+    let _guard = store_guard()?;
+    let mut store = load_store(&app)?;
+    let mut results = Vec::new();
+    if let Some(actions) = store.rule_actions.get_mut(&workspace_id) {
+        for action in actions
+            .iter_mut()
+            .filter(|action| action_ids.iter().any(|id| id == &action.id))
+        {
+            let result = undo_one(action);
             results.push(json!({
                 "id": action.id,
                 "success": result.is_ok(),
@@ -1322,6 +1651,59 @@ fn update_rule_action_status(
         json!({ "workspaceId": workspace_id }),
     );
     Ok(json!({ "success": true }))
+}
+
+fn retarget_one(action: &mut RuleAction, target_name: &str) -> Result<(), String> {
+    if action.status == "applied" || action.status == "undone" || action.status == "skipped" {
+        return Err("Action target can only be changed before apply".to_string());
+    }
+    let target_name = safe_filename(target_name)?;
+    let Some(current_target) = action.target_path.clone() else {
+        return Err("Action has no target path".to_string());
+    };
+    let current_target = PathBuf::from(current_target);
+    let Some(parent) = current_target.parent() else {
+        return Err("Target path has no parent directory".to_string());
+    };
+
+    let file_path = PathBuf::from(&action.file_path);
+    let metadata = match fs::symlink_metadata(&file_path) {
+        Ok(metadata) => metadata,
+        Err(_) => {
+            mark_stale(action);
+            return Err("File changed since action was generated".to_string());
+        }
+    };
+    let current_snapshot = snapshot(&metadata);
+    if !metadata.is_file()
+        || metadata.file_type().is_symlink()
+        || current_snapshot.size != action.file_size
+        || current_snapshot.mtime_ms != action.file_mtime_ms
+    {
+        mark_stale(action);
+        return Err("File changed since action was generated".to_string());
+    }
+
+    let folder_path = PathBuf::from(&action.folder_path);
+    let target_path = parent.join(&target_name);
+    if !path_inside(&folder_path, &target_path) {
+        return Err("Target path must stay inside the watched folder".to_string());
+    }
+    reject_symlink_ancestors(&folder_path, parent)?;
+    action.target_path = Some(target_path.to_string_lossy().to_string());
+    action.target_name = Some(target_name);
+    if same_path(&file_path, &target_path) {
+        action.status = "needs_review".to_string();
+        action.error_message = Some("Rule does not change this file".to_string());
+    } else if target_path.exists() {
+        action.status = "conflict".to_string();
+        action.error_message = Some("Target already exists".to_string());
+    } else {
+        action.status = "pending".to_string();
+        action.error_message = None;
+    }
+    action.updated_at = now_string();
+    Ok(())
 }
 
 fn apply_one(action: &mut RuleAction) -> Result<(), String> {
@@ -1397,6 +1779,84 @@ fn apply_one(action: &mut RuleAction) -> Result<(), String> {
     }
     action.status = "applied".to_string();
     action.error_message = None;
+    action.applied_source_path = Some(file_path.to_string_lossy().to_string());
+    action.applied_target_path = Some(target_path.to_string_lossy().to_string());
+    action.updated_at = now_string();
+    Ok(())
+}
+
+fn undo_one(action: &mut RuleAction) -> Result<(), String> {
+    if action.status != "applied" {
+        return Err("Only applied actions can be undone".to_string());
+    }
+    let source_path = PathBuf::from(
+        action
+            .applied_source_path
+            .clone()
+            .unwrap_or_else(|| action.file_path.clone()),
+    );
+    let target_path = PathBuf::from(
+        action
+            .applied_target_path
+            .clone()
+            .or_else(|| action.target_path.clone())
+            .ok_or_else(|| "Action has no applied target path".to_string())?,
+    );
+    let folder_path = PathBuf::from(&action.folder_path);
+
+    if !path_inside(&folder_path, &source_path) || !path_inside(&folder_path, &target_path) {
+        action.error_message = Some("Undo path must stay inside the watched folder".to_string());
+        action.updated_at = now_string();
+        return Err("Undo path must stay inside the watched folder".to_string());
+    }
+    if source_path.exists() {
+        action.error_message = Some("Original path already exists".to_string());
+        action.updated_at = now_string();
+        return Err("Original path already exists".to_string());
+    }
+
+    let metadata = match fs::symlink_metadata(&target_path) {
+        Ok(metadata) => metadata,
+        Err(_) => {
+            action.error_message = Some("Moved file is missing".to_string());
+            action.updated_at = now_string();
+            return Err("Moved file is missing".to_string());
+        }
+    };
+    let current_snapshot = snapshot(&metadata);
+    if !metadata.is_file()
+        || metadata.file_type().is_symlink()
+        || current_snapshot.size != action.file_size
+        || current_snapshot.mtime_ms != action.file_mtime_ms
+    {
+        action.error_message = Some("Moved file changed since apply".to_string());
+        action.updated_at = now_string();
+        return Err("Moved file changed since apply".to_string());
+    }
+
+    let Some(parent) = source_path.parent() else {
+        action.error_message = Some("Original path has no parent directory".to_string());
+        action.updated_at = now_string();
+        return Err("Original path has no parent directory".to_string());
+    };
+    if let Err(error) = reject_symlink_ancestors(&folder_path, parent) {
+        action.error_message = Some(error.clone());
+        action.updated_at = now_string();
+        return Err(error);
+    }
+    if let Err(error) = fs::create_dir_all(parent) {
+        action.error_message = Some(error.to_string());
+        action.updated_at = now_string();
+        return Err(error.to_string());
+    }
+    if let Err(error) = fs::rename(&target_path, &source_path) {
+        action.error_message = Some(error.to_string());
+        action.updated_at = now_string();
+        return Err(error.to_string());
+    }
+
+    action.status = "undone".to_string();
+    action.error_message = None;
     action.updated_at = now_string();
     Ok(())
 }
@@ -1423,6 +1883,8 @@ fn main() {
             None,
         ))
         .setup(|app| {
+            #[cfg(target_os = "macos")]
+            app.set_activation_policy(tauri::ActivationPolicy::Accessory);
             setup_tray(app)?;
             start_watcher(app.handle().clone());
             Ok(())
@@ -1439,16 +1901,21 @@ fn main() {
             get_rule_assistant_key,
             save_rule_assistant_key,
             delete_rule_assistant_key,
+            fetch_assistant_models,
+            draft_rule_with_assistant,
             get_workspace_setting,
             save_workspace_setting,
             get_watch_folders,
+            simulate_rule_action,
             save_watch_folder,
             remove_watch_folder,
             set_watch_folder_enabled,
             get_rule_actions,
             apply_rule_actions,
+            undo_rule_actions,
             skip_rule_actions,
             refresh_rule_actions,
+            rename_rule_action_target,
             get_app_version,
             open_latest_release
         ])
@@ -1512,6 +1979,8 @@ mod tests {
             file_size: file_snapshot.size,
             file_mtime_ms: file_snapshot.mtime_ms,
             error_message: None,
+            applied_source_path: None,
+            applied_target_path: None,
             created_at: now_string(),
             updated_at: now_string(),
         }
@@ -1886,6 +2355,44 @@ mod tests {
         assert_eq!(action.status, "applied");
         assert!(!source.exists());
         assert!(target.exists());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn apply_records_paths_and_undo_moves_file_back() {
+        let root = temp_root("undo");
+        let source = root.join("invoice.pdf");
+        let target = root.join("Documents").join("invoice.pdf");
+        fs::write(&source, "a").unwrap();
+        let mut action = pending_action(&root, &source, &target);
+
+        assert!(apply_one(&mut action).is_ok());
+        assert_eq!(action.applied_source_path.as_deref(), Some(source.to_str().unwrap()));
+        assert_eq!(action.applied_target_path.as_deref(), Some(target.to_str().unwrap()));
+        assert!(undo_one(&mut action).is_ok());
+        assert_eq!(action.status, "undone");
+        assert!(source.exists());
+        assert!(!target.exists());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn retarget_changes_conflict_to_pending_when_name_is_free() {
+        let root = temp_root("retarget");
+        let source = root.join("invoice.pdf");
+        let target = root.join("Documents").join("invoice.pdf");
+        fs::create_dir_all(target.parent().unwrap()).unwrap();
+        fs::write(&source, "a").unwrap();
+        fs::write(&target, "existing").unwrap();
+        let mut action = pending_action(&root, &source, &target);
+        action.status = "conflict".to_string();
+        action.error_message = Some("Target already exists".to_string());
+
+        assert!(retarget_one(&mut action, "invoice-2.pdf").is_ok());
+        assert_eq!(action.status, "pending");
+        assert_eq!(action.error_message, None);
+        assert_eq!(action.target_name.as_deref(), Some("invoice-2.pdf"));
+        assert!(action.target_path.unwrap().ends_with("invoice-2.pdf"));
         fs::remove_dir_all(root).unwrap();
     }
 

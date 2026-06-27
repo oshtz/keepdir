@@ -46,6 +46,8 @@ const fallbackApi: KeepDirAPI = {
   getRuleAssistantKey: async () => ({ success: true, apiKey: null }),
   saveRuleAssistantKey: async () => ({ success: true }),
   deleteRuleAssistantKey: async () => ({ success: true }),
+  fetchAssistantModels: async () => ({ success: true, models: [] }),
+  draftRuleWithAssistant: async () => ({ success: false, error: 'Rule assistant is available in the desktop app.' }),
   getWorkspaceSetting: async (_workspaceId, key) =>
     DEMO && key === 'automationRules' ? (demoRules as unknown) : null,
   saveWorkspaceSetting: async () => ({ success: true }),
@@ -53,10 +55,13 @@ const fallbackApi: KeepDirAPI = {
   saveWatchFolder: async (_workspaceId, folder) => ({ success: true, folder }),
   removeWatchFolder: async () => ({ success: true }),
   setWatchFolderEnabled: async () => ({ success: true }),
+  simulateRuleAction: async () => ({ success: true, action: DEMO ? (demoActions[0] as unknown as never) : undefined }),
   getRuleActions: async () => ({ success: true, actions: DEMO ? (demoActions as unknown as never) : [] }),
   applyRuleActions: async () => ({ success: true, results: [] }),
+  undoRuleActions: async () => ({ success: true, results: [] }),
   skipRuleActions: async () => ({ success: true }),
   refreshRuleActions: async () => ({ success: true }),
+  renameRuleActionTarget: async () => ({ success: true }),
   getAppVersion: async () => '0.0.0',
   openLatestRelease: async () => ({ success: true }),
   selectDirectory: async () => null,
@@ -73,6 +78,10 @@ const tauriApi: KeepDirAPI = {
     invoke('save_rule_assistant_key', { provider, apiKey }),
   deleteRuleAssistantKey: (provider) =>
     invoke('delete_rule_assistant_key', { provider }),
+  fetchAssistantModels: (provider, apiKey, endpoint) =>
+    invoke('fetch_assistant_models', { provider, apiKey, endpoint }),
+  draftRuleWithAssistant: (provider, apiKey, endpoint, model, description) =>
+    invoke('draft_rule_with_assistant', { provider, apiKey, endpoint, model, description }),
   getWorkspaceSetting: (workspaceId, key) =>
     invoke('get_workspace_setting', { workspaceId, key }),
   saveWorkspaceSetting: (workspaceId, key, value) =>
@@ -85,6 +94,8 @@ const tauriApi: KeepDirAPI = {
     invoke('remove_watch_folder', { workspaceId, folderId }),
   setWatchFolderEnabled: (workspaceId, folderId, enabled) =>
     invoke('set_watch_folder_enabled', { workspaceId, folderId, enabled }),
+  simulateRuleAction: (workspaceId, fileName, folderPath) =>
+    invoke('simulate_rule_action', { workspaceId, fileName, folderPath }),
   getRuleActions: (workspaceId, options) =>
     invoke('get_rule_actions', {
       workspaceId,
@@ -92,10 +103,14 @@ const tauriApi: KeepDirAPI = {
     }),
   applyRuleActions: (workspaceId, actionIds) =>
     invoke('apply_rule_actions', { workspaceId, actionIds }),
+  undoRuleActions: (workspaceId, actionIds) =>
+    invoke('undo_rule_actions', { workspaceId, actionIds }),
   skipRuleActions: (workspaceId, actionIds) =>
     invoke('skip_rule_actions', { workspaceId, actionIds }),
   refreshRuleActions: (workspaceId, actionIds) =>
     invoke('refresh_rule_actions', { workspaceId, actionIds }),
+  renameRuleActionTarget: (workspaceId, actionId, targetName) =>
+    invoke('rename_rule_action_target', { workspaceId, actionId, targetName }),
   getAppVersion: () =>
     invoke('get_app_version'),
   openLatestRelease: () =>

@@ -62,7 +62,16 @@ export function useRuleActions(workspaceId?: string | null, includeHistory = fal
     error,
     load,
     apply: (ids: string[]) => run(ids, window.keepdirAPI.applyRuleActions),
+    undo: (ids: string[]) => run(ids, window.keepdirAPI.undoRuleActions),
     skip: (ids: string[]) => run(ids, window.keepdirAPI.skipRuleActions),
-    refresh: (ids: string[]) => run(ids, window.keepdirAPI.refreshRuleActions)
+    refresh: (ids: string[]) => run(ids, window.keepdirAPI.refreshRuleActions),
+    renameTarget: async (id: string, targetName: string) => {
+      if (!workspaceId) {
+        return { success: false };
+      }
+      const result = await window.keepdirAPI.renameRuleActionTarget(workspaceId, id, targetName);
+      await load();
+      return result;
+    }
   };
 }
