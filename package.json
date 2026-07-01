@@ -57,7 +57,7 @@
     "ts-jest": "^29.4.1",
     "typescript": "^5.3.3",
     "typescript-eslint": "^8.60.1",
-    "vite": "^7.3.5"
+    "vite": "^7.3.6"
   },
   "dependencies": {
     "@fontsource/jetbrains-mono": "^5.2.8",
