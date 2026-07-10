@@ -1,0 +1,663 @@
+<Window x:Class="KeepDir.App.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:KeepDir.App"
+        xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d"
+        Title="KeepDir"
+        Width="1280"
+        Height="900"
+        MinWidth="880"
+        MinHeight="560"
+        Icon="pack://application:,,,/KeepDir.App;component/icon.ico"
+        WindowStyle="None"
+        ResizeMode="CanResize"
+        Loaded="Window_Loaded"
+        Closing="Window_Closing"
+        FontFamily="{StaticResource KdFontBody}"
+        Background="{DynamicResource KdBg}">
+    <shell:WindowChrome.WindowChrome>
+        <shell:WindowChrome CaptionHeight="76" ResizeBorderThickness="6" GlassFrameThickness="0" UseAeroCaptionButtons="False" />
+    </shell:WindowChrome.WindowChrome>
+
+    <Window.Resources>
+        <local:RuleActionTooltipConverter x:Key="RuleActionTooltipConverter" />
+        <local:RuleActionStatusLabelConverter x:Key="RuleActionStatusLabelConverter" />
+        <local:FileNameConverter x:Key="FileNameConverter" />
+    </Window.Resources>
+
+    <Grid Background="{DynamicResource KdBg}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <Border Grid.Row="0" Margin="16,16,16,0" Padding="16,11" CornerRadius="12" Background="{DynamicResource KdSurface}" BorderBrush="{DynamicResource KdBorder}" BorderThickness="1">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <Image Source="icon.png" Width="32" Height="32" Margin="0,0,12,0" />
+                    <StackPanel>
+                        <TextBlock Text="KeepDir" FontSize="16" FontWeight="SemiBold" />
+                        <TextBlock Text="FOLDER CLEANUP" FontFamily="{StaticResource KdFontMono}" FontSize="10" Foreground="{DynamicResource KdSecondary}" />
+                    </StackPanel>
+                </StackPanel>
+
+                <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="24,0">
+                    <StackPanel Orientation="Horizontal" Margin="0,0,18,0">
+                        <TextBlock x:Name="FoldersMetricText" Text="0" FontSize="18" FontWeight="SemiBold" />
+                        <TextBlock Text=" FOLDERS" Margin="6,0,0,0" FontFamily="{StaticResource KdFontMono}" FontSize="13" Foreground="{DynamicResource KdSecondary}" VerticalAlignment="Center" />
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="0,0,18,0">
+                        <TextBlock x:Name="RulesMetricText" Text="0" FontSize="18" FontWeight="SemiBold" />
+                        <TextBlock Text=" RULES" Margin="6,0,0,0" FontFamily="{StaticResource KdFontMono}" FontSize="13" Foreground="{DynamicResource KdSecondary}" VerticalAlignment="Center" />
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="0,0,18,0">
+                        <TextBlock x:Name="ReadyMetricText" Text="0" FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource KdAccent}" />
+                        <TextBlock Text=" READY" Margin="6,0,0,0" FontFamily="{StaticResource KdFontMono}" FontSize="13" Foreground="{DynamicResource KdSecondary}" VerticalAlignment="Center" />
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock x:Name="CheckMetricText" Text="0" FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource KdWarning}" />
+                        <TextBlock Text=" CHECK" Margin="6,0,0,0" FontFamily="{StaticResource KdFontMono}" FontSize="13" Foreground="{DynamicResource KdSecondary}" VerticalAlignment="Center" />
+                    </StackPanel>
+                </StackPanel>
+
+                <Button x:Name="ThemeButton" Grid.Column="2" Width="36" Height="32" Margin="12,0,0,0" Style="{StaticResource KdWindowButton}" Click="ThemeButton_Click" ToolTip="Toggle theme" AutomationProperties.Name="Toggle light and dark theme" shell:WindowChrome.IsHitTestVisibleInChrome="True">
+                    <Grid Width="18" Height="18">
+                        <Grid x:Name="ThemeSunIcon">
+                            <Ellipse Width="7" Height="7" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.2" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            <Path Data="M9,0 L9,3 M9,15 L9,18 M0,9 L3,9 M15,9 L18,9 M2.6,2.6 L4.7,4.7 M13.3,13.3 L15.4,15.4 M15.4,2.6 L13.3,4.7 M4.7,13.3 L2.6,15.4" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+                        </Grid>
+                        <Path x:Name="ThemeMoonIcon" Visibility="Collapsed" Width="18" Height="18" Stretch="Uniform" Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" Data="M16.8,10.7 C16.1,14.2 13,16.8 9.3,16.8 C4.8,16.8 1.2,13.2 1.2,8.7 C1.2,5.1 3.7,2 7.1,1.2 C6.7,2.2 6.5,3.3 6.5,4.5 C6.5,8.4 9.6,11.5 13.5,11.5 C14.6,11.5 15.8,11.2 16.8,10.7 Z" />
+                    </Grid>
+                </Button>
+                <StackPanel Grid.Column="3" Orientation="Horizontal" Margin="10,0,0,0" shell:WindowChrome.IsHitTestVisibleInChrome="True">
+                    <Button x:Name="MinimizeButton" Style="{StaticResource KdWindowButton}" Click="Minimize_Click" ToolTip="Minimize" AutomationProperties.Name="Minimize window">
+                        <Path Width="10" Height="10" Data="M1,5 L9,5" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.2" SnapsToDevicePixels="True" />
+                    </Button>
+                    <Button x:Name="MaximizeRestoreButton" Style="{StaticResource KdWindowButton}" Click="MaximizeRestore_Click" ToolTip="Maximize" AutomationProperties.Name="Maximize or restore window">
+                        <Path Width="10" Height="10" Data="M1.5,1.5 L8.5,1.5 L8.5,8.5 L1.5,8.5 Z" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.2" Fill="Transparent" SnapsToDevicePixels="True" />
+                    </Button>
+                    <Button x:Name="CloseChromeButton" Style="{StaticResource KdWindowButton}" Click="CloseWindow_Click" ToolTip="Close" AutomationProperties.Name="Close window to tray">
+                        <Path Width="10" Height="10" Data="M2,2 L8,8 M8,2 L2,8" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" SnapsToDevicePixels="True" />
+                    </Button>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <Grid Grid.Row="1" Margin="16">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition x:Name="LeftPanelColumn" Width="260" MinWidth="210" />
+                <ColumnDefinition Width="8" />
+                <ColumnDefinition x:Name="CenterPanelColumn" Width="*" MinWidth="360" />
+                <ColumnDefinition Width="8" />
+                <ColumnDefinition x:Name="RightPanelColumn" Width="340" MinWidth="270" />
+            </Grid.ColumnDefinitions>
+
+            <ScrollViewer Grid.Column="0" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <StackPanel>
+                    <Border Padding="16" CornerRadius="12" Background="{DynamicResource KdSurface}" BorderBrush="{DynamicResource KdBorder}" BorderThickness="1">
+                        <StackPanel>
+                            <TextBlock Text="ENGINE" FontFamily="{StaticResource KdFontMono}" FontSize="11" Foreground="{DynamicResource KdSecondary}" />
+                            <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                <Ellipse Width="12" Height="12" Fill="{DynamicResource KdAccent}" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                <TextBlock Text="Active" FontSize="28" FontWeight="SemiBold" />
+                            </StackPanel>
+                            <TextBlock Text="running" Margin="0,2,0,18" Foreground="{DynamicResource KdSecondary}" />
+                            <Border Height="1" Background="{DynamicResource KdBorder}" Margin="0,0,0,16" />
+
+                            <Grid Margin="0,0,0,10">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="22" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <Border Width="6" Height="6" CornerRadius="3" Background="{DynamicResource KdSecondary}" Opacity="0.7" VerticalAlignment="Center" />
+                                <StackPanel Grid.Column="1">
+                                    <TextBlock Text="WATCHING" FontFamily="{StaticResource KdFontMono}" FontSize="10" Foreground="{DynamicResource KdSecondary}" />
+                                    <TextBlock x:Name="EngineFoldersText" Text="0 active" Foreground="{DynamicResource KdSecondary}" />
+                                </StackPanel>
+                                <TextBlock Grid.Column="2" x:Name="EngineFoldersCountText" Text="0" FontSize="18" FontWeight="SemiBold" />
+                            </Grid>
+
+                            <Grid Margin="0,0,0,10">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="22" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <Border Width="6" Height="6" CornerRadius="3" Background="{DynamicResource KdSecondary}" Opacity="0.7" VerticalAlignment="Center" />
+                                <StackPanel Grid.Column="1">
+                                    <TextBlock Text="RULES" FontFamily="{StaticResource KdFontMono}" FontSize="10" Foreground="{DynamicResource KdSecondary}" />
+                                    <TextBlock x:Name="EngineRulesText" Text="0 enabled" Foreground="{DynamicResource KdSecondary}" />
+                                </StackPanel>
+                                <TextBlock Grid.Column="2" x:Name="EngineRulesCountText" Text="0" FontSize="18" FontWeight="SemiBold" />
+                            </Grid>
+
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="22" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <Border Width="6" Height="6" CornerRadius="3" Background="{DynamicResource KdAccent}" VerticalAlignment="Center" />
+                                <StackPanel Grid.Column="1">
+                                    <TextBlock Text="QUEUE" FontFamily="{StaticResource KdFontMono}" FontSize="10" Foreground="{DynamicResource KdSecondary}" />
+                                    <TextBlock x:Name="EngineQueueText" Text="0 ready - 0 flagged" Foreground="{DynamicResource KdSecondary}" />
+                                </StackPanel>
+                                <TextBlock Grid.Column="2" x:Name="PendingCountText" Text="0" FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource KdAccent}" />
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Margin="0,16,0,0" Padding="16" CornerRadius="12" Background="{DynamicResource KdSurface}" BorderBrush="{DynamicResource KdBorder}" BorderThickness="1">
+                        <StackPanel>
+                            <TextBlock Text="SOURCES" FontFamily="{StaticResource KdFontMono}" FontSize="11" Foreground="{DynamicResource KdSecondary}" />
+                            <Button Content="+  Add watched folder" Margin="0,14,0,10" Height="40" Click="AddFolder_Click" />
+                            <Button Content="Open data folder" Height="34" Click="OpenDataFolder_Click" Style="{StaticResource KdGhostButton}" />
+                            <TextBlock x:Name="StorePathText" TextWrapping="Wrap" Margin="0,12,0,14" FontFamily="{StaticResource KdFontMono}" FontSize="11" Foreground="{DynamicResource KdSecondary}" />
+                            <ListBox x:Name="WatchFoldersList" Margin="0,0,0,12" SelectionChanged="WatchFoldersList_SelectionChanged" AutomationProperties.Name="Watched folders">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <StackPanel>
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Text="{Binding Path, Converter={StaticResource FileNameConverter}}" FontWeight="SemiBold" FontSize="13" TextTrimming="CharacterEllipsis" />
+                                                <TextBlock Grid.Column="1" Text="x" Foreground="{DynamicResource KdSecondary}" />
+                                            </Grid>
+                                            <TextBlock Text="{Binding Path}" FontFamily="{StaticResource KdFontMono}" FontSize="10" Foreground="{DynamicResource KdSecondary}" TextTrimming="CharacterEllipsis" />
+                                            <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                                <TextBlock FontSize="12" Foreground="{DynamicResource KdSecondary}">
+                                                    <TextBlock.Style>
+                                                        <Style TargetType="TextBlock">
+                                                            <Setter Property="Text" Value="Paused" />
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding Enabled}" Value="True">
+                                                                    <Setter Property="Text" Value="On" />
+                                                                    <Setter Property="Foreground" Value="{DynamicResource KdAccent}" />
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </TextBlock.Style>
+                                                </TextBlock>
+                                                <TextBlock Text="  " />
+                                                <TextBlock FontSize="12" Foreground="{DynamicResource KdSecondary}">
+                                                    <TextBlock.Style>
+                                                        <Style TargetType="TextBlock">
+                                                            <Setter Property="Text" Value="Top folder" />
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding Recursive}" Value="True">
+                                                                    <Setter Property="Text" Value="Subfolders" />
+                                                                    <Setter Property="Foreground" Value="{DynamicResource KdAccent}" />
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </TextBlock.Style>
+                                                </TextBlock>
+                                            </StackPanel>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                            <Border Height="1" Background="{DynamicResource KdBorder}" Margin="0,2,0,14" />
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Selected folder" FontFamily="{StaticResource KdFontMono}" FontSize="11" Foreground="{DynamicResource KdSecondary}" VerticalAlignment="Center" />
+                                <Button Grid.Column="1" Content="Remove" Width="78" Height="30" Click="RemoveWatchFolder_Click" Style="{StaticResource KdGhostButton}" />
+                            </Grid>
+                            <TextBlock x:Name="WatchFolderPathText" TextWrapping="Wrap" Margin="0,6,0,8" FontFamily="{StaticResource KdFontMono}" FontSize="11" Foreground="{DynamicResource KdSecondary}" />
+                            <Grid Margin="0,0,0,8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <CheckBox x:Name="WatchFolderEnabledCheck" Content="On" Style="{StaticResource KdSwitchStyle}" Margin="0,0,10,0" Checked="WatchFolderEnabledCheck_Changed" Unchecked="WatchFolderEnabledCheck_Changed" />
+                                <CheckBox x:Name="WatchFolderRecursiveCheck" Grid.Column="1" Content="Subfolders" Style="{StaticResource KdSwitchStyle}" Checked="WatchFolderRecursiveCheck_Changed" Unchecked="WatchFolderRecursiveCheck_Changed" />
+                            </Grid>
+                            <TextBlock x:Name="WatchFolderStatusText" TextWrapping="Wrap" Margin="0,8,0,0" Foreground="{DynamicResource KdSecondary}" />
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
+
+            <GridSplitter Grid.Column="1" ResizeBehavior="PreviousAndNext" PreviewMouseLeftButtonUp="LayoutSplitter_MouseLeftButtonUp" />
+
+            <Border Grid.Column="2" Margin="8,0" Padding="16" CornerRadius="12" Background="{DynamicResource KdSurface}" BorderBrush="{DynamicResource KdAccent}" BorderThickness="1">
+                <DockPanel>
+                    <StackPanel DockPanel.Dock="Top" Margin="0,0,0,12">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="REVIEW" FontFamily="{StaticResource KdFontMono}" FontSize="11" Foreground="{DynamicResource KdSecondary}" />
+                                <TextBlock Text="Queue" FontSize="22" FontWeight="SemiBold" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                <CheckBox x:Name="QueueHistoryCheck" Content="History" Margin="0,0,10,0" Checked="QueueHistoryCheck_Changed" Unchecked="QueueHistoryCheck_Changed" />
+                                <Border CornerRadius="8" Padding="8,4" Background="{DynamicResource KdAccentWash}">
+                                    <TextBlock x:Name="QueueBadgeText" Text="0" FontFamily="{StaticResource KdFontMono}" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource KdAccent}" />
+                                </Border>
+                            </StackPanel>
+                        </Grid>
+
+                        <WrapPanel Margin="0,14,0,0">
+                            <ComboBox x:Name="QueueFilterBox" Width="1" Height="1" Opacity="0" IsHitTestVisible="False" Focusable="False" IsTabStop="False" SelectedIndex="0" SelectionChanged="QueueFilterBox_SelectionChanged">
+                                <ComboBoxItem Content="All active" Tag="all" />
+                                <ComboBoxItem Content="Ready" Tag="ready" />
+                                <ComboBoxItem Content="Needs check" Tag="check" />
+                                <ComboBoxItem Content="Blocked" Tag="blocked" />
+                            </ComboBox>
+                            <RadioButton x:Name="QueueAllFilterButton" Content="ALL" GroupName="QueueFilter" Tag="all" Style="{StaticResource KdSegmentRadioStyle}" Margin="0,0,6,0" Click="QueueFilterChip_Click" />
+                            <RadioButton x:Name="QueueReadyFilterButton" Content="READY" GroupName="QueueFilter" Tag="ready" Style="{StaticResource KdSegmentRadioStyle}" Margin="0,0,6,0" Click="QueueFilterChip_Click" />
+                            <RadioButton x:Name="QueueCheckFilterButton" Content="CHECK" GroupName="QueueFilter" Tag="check" Style="{StaticResource KdSegmentRadioStyle}" Margin="0,0,6,0" Click="QueueFilterChip_Click" />
+                            <RadioButton x:Name="QueueBlockedFilterButton" Content="BLOCKED" GroupName="QueueFilter" Tag="blocked" Style="{StaticResource KdSegmentRadioStyle}" Margin="0,0,10,0" Click="QueueFilterChip_Click" />
+                        </WrapPanel>
+                    </StackPanel>
+
+                    <StackPanel DockPanel.Dock="Bottom" Margin="0,12,0,0">
+                        <Grid x:Name="RetargetPanel" Margin="0,0,0,8" Visibility="Collapsed">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBox x:Name="RetargetNameBox" Height="30" VerticalContentAlignment="Center" AutomationProperties.Name="Replacement target file name" />
+                            <Button x:Name="RetargetButton" Grid.Column="1" Content="Rename" Width="82" Height="30" Margin="8,0,0,0" Click="Retarget_Click" />
+                        </Grid>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <CheckBox x:Name="QueueSelectAllCheck" Content="Select all" IsThreeState="True" VerticalAlignment="Center" Checked="QueueSelectAllCheck_Changed" Unchecked="QueueSelectAllCheck_Changed" />
+                            <WrapPanel Grid.Column="1" HorizontalAlignment="Right">
+                                <Button x:Name="SkipSelectedButton" Content="Skip" Width="56" Height="30" Margin="0,0,6,0" Click="SkipSelected_Click" Style="{StaticResource KdGhostButton}" />
+                                <Button x:Name="SkipVisibleButton" Content="Skip visible" Width="86" Height="30" Margin="0,0,6,0" Click="SkipVisible_Click" Style="{StaticResource KdGhostButton}" />
+                                <Button x:Name="RefreshSelectedButton" Content="Refresh" Width="74" Height="30" Margin="0,0,6,0" Click="RefreshSelected_Click" Style="{StaticResource KdGhostButton}" />
+                                <Button x:Name="UndoSelectedButton" Content="Undo" Width="62" Height="30" Margin="0,0,6,0" Click="UndoSelected_Click" Style="{StaticResource KdGhostButton}" />
+                                <Button x:Name="ApplySelectedButton" Width="70" Height="30" Margin="0,0,6,0" Click="ApplySelected_Click" Style="{StaticResource KdPrimaryButton}" Foreground="{DynamicResource KdAccentInk}">
+                                    <TextBlock Text="Apply" Foreground="{DynamicResource KdAccentInk}" />
+                                </Button>
+                                <Button x:Name="ApplyReadyButton" Width="112" Height="30" Click="ApplyReady_Click" Style="{StaticResource KdPrimaryButton}" Foreground="{DynamicResource KdAccentInk}">
+                                    <TextBlock Text="Apply all ready" Foreground="{DynamicResource KdAccentInk}" />
+                                </Button>
+                            </WrapPanel>
+                        </Grid>
+                        <TextBlock x:Name="QueueStatusText" TextWrapping="Wrap" Margin="0,8,0,0" Foreground="{DynamicResource KdSecondary}">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+                                    <Style.Triggers>
+                                        <Trigger Property="Text" Value="">
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                        </Trigger>
+                                        <Trigger Property="Text" Value="{x:Null}">
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                        </Trigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </StackPanel>
+
+                    <Grid>
+                        <ListView x:Name="QueueList" SelectionMode="Extended" ScrollViewer.HorizontalScrollBarVisibility="Disabled" SelectionChanged="QueueList_SelectionChanged" AutomationProperties.Name="File review queue">
+                            <ListView.ItemContainerStyle>
+                                <Style TargetType="ListViewItem" BasedOn="{StaticResource {x:Type ListViewItem}}">
+                                    <Setter Property="ToolTip" Value="{Binding Converter={StaticResource RuleActionTooltipConverter}}" />
+                                    <Setter Property="AutomationProperties.Name" Value="{Binding OriginalName}" />
+                                </Style>
+                            </ListView.ItemContainerStyle>
+                            <ListView.GroupStyle>
+                                <GroupStyle>
+                                    <GroupStyle.HeaderTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding Name}" Margin="0,8,0,5" FontFamily="{StaticResource KdFontMono}" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource KdSecondary}" />
+                                        </DataTemplate>
+                                    </GroupStyle.HeaderTemplate>
+                                </GroupStyle>
+                            </ListView.GroupStyle>
+                            <ListView.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Padding="12,6" CornerRadius="9" BorderThickness="1">
+                                        <Border.Style>
+                                            <Style TargetType="Border">
+                                                <Setter Property="Background" Value="{DynamicResource KdCard}" />
+                                                <Setter Property="BorderBrush" Value="Transparent" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding Status}" Value="pending">
+                                                        <Setter Property="Background" Value="{DynamicResource KdReadyRow}" />
+                                                        <Setter Property="BorderBrush" Value="{DynamicResource KdAccentBorder}" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Border.Style>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <CheckBox Grid.Column="0"
+                                                      Width="16"
+                                                      Height="16"
+                                                      Margin="0,2,10,0"
+                                                      VerticalAlignment="Top"
+                                                      Focusable="False"
+                                                      IsChecked="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=ListViewItem}, Mode=TwoWay}" />
+                                            <StackPanel Grid.Column="1" MinWidth="0">
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="2*" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                        <ColumnDefinition Width="*" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBlock Text="{Binding OriginalName}" FontSize="14" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                                    <TextBlock Grid.Column="1" Text=" -> " Margin="5,0" Foreground="{DynamicResource KdSecondary}" />
+                                                    <TextBlock Grid.Column="2" Text="{Binding TargetName}" Foreground="{DynamicResource KdSecondary}" TextTrimming="CharacterEllipsis" />
+                                                </Grid>
+                                                <TextBlock Margin="0,3,0,0" FontFamily="{StaticResource KdFontMono}" FontSize="10" Foreground="{DynamicResource KdSecondary}" TextTrimming="CharacterEllipsis">
+                                                    <TextBlock.Text>
+                                                        <MultiBinding StringFormat="{}from {0}  rule: {1}">
+                                                            <Binding Path="FilePath" />
+                                                            <Binding Path="RuleName" />
+                                                        </MultiBinding>
+                                                    </TextBlock.Text>
+                                                </TextBlock>
+                                                <TextBlock Text="{Binding ErrorMessage}" Margin="0,4,0,0" FontFamily="{StaticResource KdFontMono}" FontSize="10" Foreground="{DynamicResource KdDanger}" TextWrapping="Wrap">
+                                                    <TextBlock.Style>
+                                                        <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding ErrorMessage}" Value="{x:Null}">
+                                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                                </DataTrigger>
+                                                                <DataTrigger Binding="{Binding ErrorMessage}" Value="">
+                                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </TextBlock.Style>
+                                                </TextBlock>
+                                            </StackPanel>
+                                            <Border Grid.Column="2" CornerRadius="9" Padding="8,2" VerticalAlignment="Top" Background="{DynamicResource KdElevated}">
+                                                <Border.Style>
+                                                    <Style TargetType="Border">
+                                                        <Setter Property="BorderBrush" Value="{DynamicResource KdBorder}" />
+                                                        <Setter Property="BorderThickness" Value="1" />
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding Status}" Value="pending">
+                                                                <Setter Property="Background" Value="{DynamicResource KdAccentWash}" />
+                                                                <Setter Property="BorderBrush" Value="{DynamicResource KdAccent}" />
+                                                            </DataTrigger>
+                                                            <DataTrigger Binding="{Binding Status}" Value="needs_review">
+                                                                <Setter Property="BorderBrush" Value="{DynamicResource KdWarning}" />
+                                                            </DataTrigger>
+                                                            <DataTrigger Binding="{Binding Status}" Value="stale">
+                                                                <Setter Property="BorderBrush" Value="{DynamicResource KdWarning}" />
+                                                            </DataTrigger>
+                                                            <DataTrigger Binding="{Binding Status}" Value="conflict">
+                                                                <Setter Property="BorderBrush" Value="{DynamicResource KdDanger}" />
+                                                            </DataTrigger>
+                                                            <DataTrigger Binding="{Binding Status}" Value="error">
+                                                                <Setter Property="BorderBrush" Value="{DynamicResource KdDanger}" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </Border.Style>
+                                                <TextBlock Text="{Binding Status, Converter={StaticResource RuleActionStatusLabelConverter}}" FontFamily="{StaticResource KdFontMono}" FontSize="11" Foreground="{DynamicResource KdText}" />
+                                            </Border>
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ListView.ItemTemplate>
+                        </ListView>
+                        <TextBlock x:Name="QueueEmptyText" Visibility="Collapsed" IsHitTestVisible="False" HorizontalAlignment="Center" VerticalAlignment="Center" TextWrapping="Wrap" TextAlignment="Center" Foreground="{DynamicResource KdSecondary}" />
+                    </Grid>
+                </DockPanel>
+            </Border>
+
+            <GridSplitter Grid.Column="3" ResizeBehavior="PreviousAndNext" PreviewMouseLeftButtonUp="LayoutSplitter_MouseLeftButtonUp" />
+
+            <Border Grid.Column="4" Padding="16" CornerRadius="12" Background="{DynamicResource KdSurface}" BorderBrush="{DynamicResource KdBorder}" BorderThickness="1">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel>
+                        <TextBlock Text="Rules" FontSize="22" FontWeight="SemiBold" />
+                        <Expander x:Name="SettingsExpander" Header="Settings" Margin="0,8,0,0" Foreground="{DynamicResource KdSecondary}" Expanded="UiLayout_Changed" Collapsed="UiLayout_Changed">
+                            <StackPanel Margin="0,8,0,0">
+                                <CheckBox x:Name="StartupCheck" Content="Open on startup" Style="{StaticResource KdSwitchStyle}" Checked="StartupCheck_Changed" Unchecked="StartupCheck_Changed" />
+                                <WrapPanel Margin="0,10,0,0">
+                                    <Button Content="Check for updates" Height="34" Width="132" Margin="0,0,8,0" Click="CheckUpdates_Click" />
+                                    <Button x:Name="OpenReleaseButton" Content="Open release" Height="34" Width="104" IsEnabled="False" Click="OpenLatestRelease_Click" Style="{StaticResource KdGhostButton}" />
+                                </WrapPanel>
+                                <TextBlock x:Name="UpdateStatusText" TextWrapping="Wrap" Margin="0,8,0,0" Foreground="{DynamicResource KdSecondary}" />
+                            </StackPanel>
+                        </Expander>
+
+                        <Expander x:Name="AssistantExpander" Header="Assistant" IsExpanded="True" Margin="0,14,0,0" Expanded="UiLayout_Changed" Collapsed="UiLayout_Changed">
+                            <Border Margin="0,8,0,0" Padding="14" CornerRadius="9" Background="{DynamicResource KdCard}">
+                                <StackPanel>
+                                <TextBlock Text="Tell KeepDir what to move" Margin="0,6,0,6" FontSize="12" Foreground="{DynamicResource KdSecondary}" />
+                                <TextBox x:Name="AssistantDescriptionBox" Height="72" TextWrapping="Wrap" AcceptsReturn="True" VerticalScrollBarVisibility="Auto" AutomationProperties.Name="Rule description for assistant" />
+                                <Grid Margin="0,10,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Button Content="Draft" Height="32" Margin="0,0,6,0" Click="DraftRule_Click" />
+                                    <Button Grid.Column="1" Content="Load models" Height="32" Margin="6,0,0,0" Click="LoadAssistantModels_Click" Style="{StaticResource KdGhostButton}" />
+                                </Grid>
+                                <Expander x:Name="AssistantSettingsExpander" Header="Settings" IsExpanded="False" Foreground="{DynamicResource KdSecondary}" Expanded="UiLayout_Changed" Collapsed="UiLayout_Changed">
+                                    <StackPanel Margin="0,8,0,0">
+                                        <TextBlock Text="ASSISTANT SETTINGS" FontFamily="{StaticResource KdFontMono}" FontSize="11" Foreground="{DynamicResource KdSecondary}" />
+                                        <ComboBox x:Name="AssistantProviderBox" Height="30" Margin="0,6,0,6" SelectionChanged="AssistantProviderBox_SelectionChanged" AutomationProperties.Name="Assistant provider" />
+                                        <TextBox x:Name="AssistantEndpointBox" Height="30" Margin="0,0,0,6" LostFocus="AssistantSettings_LostFocus" AutomationProperties.Name="Assistant endpoint" />
+                                        <ComboBox x:Name="AssistantModelBox" Height="30" Margin="0,0,0,6" IsEditable="True" LostFocus="AssistantSettings_LostFocus" AutomationProperties.Name="Assistant model" />
+                                        <PasswordBox x:Name="AssistantApiKeyBox" Height="30" Margin="0,0,0,6" LostFocus="AssistantApiKeyBox_LostFocus" AutomationProperties.Name="Assistant API key" />
+                                        <Button Content="Forget key" Width="92" Height="30" Click="ForgetAssistantKey_Click" Style="{StaticResource KdGhostButton}" />
+                                    </StackPanel>
+                                </Expander>
+                                <TextBlock x:Name="AssistantStatusText" TextWrapping="Wrap" Margin="0,8,0,0" Foreground="{DynamicResource KdSecondary}" />
+                                </StackPanel>
+                            </Border>
+                        </Expander>
+
+                        <Expander x:Name="TryFileExpander" Header="Try a file" IsExpanded="True" Margin="0,12,0,0" Expanded="UiLayout_Changed" Collapsed="UiLayout_Changed">
+                            <Border Margin="0,8,0,0" Padding="14" CornerRadius="9" Background="{DynamicResource KdCard}">
+                                <StackPanel>
+                                <TextBlock Text="File name" Margin="0,8,0,6" FontSize="12" Foreground="{DynamicResource KdSecondary}" />
+                                <TextBox x:Name="RuleTestFileBox" Height="30" AutomationProperties.Name="Rule test file" />
+                                <Grid Margin="0,8,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Button Content="Browse" Height="30" Margin="0,0,6,0" Click="BrowseRuleTestFile_Click" Style="{StaticResource KdGhostButton}" />
+                                    <Button Grid.Column="1" Content="Test" Height="30" Margin="6,0,0,0" Click="TestRules_Click" />
+                                </Grid>
+                                <TextBlock x:Name="RuleTestStatusText" TextWrapping="Wrap" Margin="0,8,0,0" Foreground="{DynamicResource KdSecondary}" />
+                                </StackPanel>
+                            </Border>
+                        </Expander>
+
+                        <Expander x:Name="RulesExpander" Header="Rules" IsExpanded="True" Margin="0,16,0,0" Expanded="UiLayout_Changed" Collapsed="UiLayout_Changed">
+                            <StackPanel Margin="0,8,0,0">
+                                <Grid Margin="0,0,0,8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="First match wins." Foreground="{DynamicResource KdSecondary}" VerticalAlignment="Center" />
+                                    <Button Grid.Column="1" Content="+  Add" Width="84" Height="34" Click="NewRule_Click" />
+                                </Grid>
+                                <CheckBox x:Name="QueueUnmatchedCheck" Content="Queue unmatched files" Margin="0,0,0,10" Checked="QueueUnmatchedCheck_Changed" Unchecked="QueueUnmatchedCheck_Changed" />
+
+                                <ListView x:Name="RulesList" MaxHeight="260" ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.VerticalScrollBarVisibility="Auto" SelectionChanged="RulesList_SelectionChanged" AutomationProperties.Name="Automation rules">
+                                    <ListView.ItemContainerStyle>
+                                        <Style TargetType="ListViewItem" BasedOn="{StaticResource {x:Type ListViewItem}}">
+                                            <Setter Property="AutomationProperties.Name" Value="{Binding Name}" />
+                                        </Style>
+                                    </ListView.ItemContainerStyle>
+                                    <ListView.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border Padding="10" CornerRadius="9" Background="{DynamicResource KdCard}">
+                                                <Grid>
+                                                    <Grid.RowDefinitions>
+                                                        <RowDefinition Height="Auto" />
+                                                        <RowDefinition Height="Auto" />
+                                                    </Grid.RowDefinitions>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBlock Text="{Binding Name}" FontSize="14" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                                    <Border Grid.Column="1" CornerRadius="6" Padding="6,1" Margin="8,0,0,0" Background="{DynamicResource KdAccentWash}" VerticalAlignment="Center">
+                                                        <StackPanel Orientation="Horizontal">
+                                                            <TextBlock FontFamily="{StaticResource KdFontMono}" FontSize="10" Foreground="{DynamicResource KdSecondary}">
+                                                                <TextBlock.Style>
+                                                                    <Style TargetType="TextBlock">
+                                                                        <Setter Property="Text" Value="PAUSED" />
+                                                                        <Style.Triggers>
+                                                                            <DataTrigger Binding="{Binding Enabled}" Value="True">
+                                                                                <Setter Property="Text" Value="ON" />
+                                                                                <Setter Property="Foreground" Value="{DynamicResource KdAccent}" />
+                                                                            </DataTrigger>
+                                                                        </Style.Triggers>
+                                                                    </Style>
+                                                                </TextBlock.Style>
+                                                            </TextBlock>
+                                                        </StackPanel>
+                                                    </Border>
+                                                    <TextBlock Grid.Row="1" Grid.ColumnSpan="2" Margin="0,5,0,0" FontFamily="{StaticResource KdFontMono}" FontSize="11" Foreground="{DynamicResource KdSecondary}" TextTrimming="CharacterEllipsis">
+                                                        <TextBlock.Text>
+                                                            <MultiBinding StringFormat="{}{0}  ->  {1}">
+                                                                <Binding Path="Match.NameContains" />
+                                                                <Binding Path="Action.TargetFolder" />
+                                                            </MultiBinding>
+                                                        </TextBlock.Text>
+                                                    </TextBlock>
+                                                </Grid>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ListView.ItemTemplate>
+                                </ListView>
+                            </StackPanel>
+                        </Expander>
+
+                        <Expander x:Name="EditRuleExpander" Header="Edit rule" IsExpanded="True" Margin="0,12,0,0" Expanded="UiLayout_Changed" Collapsed="UiLayout_Changed">
+                            <Border Margin="0,8,0,0" Padding="12" CornerRadius="9" Background="{DynamicResource KdCard}">
+                            <StackPanel>
+                                <CheckBox x:Name="RuleEnabledCheck" Content="On" Style="{StaticResource KdSwitchStyle}" HorizontalAlignment="Right" Checked="RuleEditor_Changed" Unchecked="RuleEditor_Changed" />
+
+                                <Grid Margin="0,10,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="92" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Rule name" FontSize="11" Foreground="{DynamicResource KdSecondary}" VerticalAlignment="Center" />
+                                    <TextBox x:Name="RuleNameBox" Grid.Column="1" Height="30" TextChanged="RuleEditor_Changed" AutomationProperties.Name="Rule name" />
+                                </Grid>
+
+                                <Border Height="1" Background="{DynamicResource KdBorder}" Margin="0,12,0,10" />
+
+                                <TextBlock Text="Match" FontSize="12" FontWeight="SemiBold" />
+                                <Grid Margin="0,8,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="92" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Name contains" FontSize="11" Foreground="{DynamicResource KdSecondary}" VerticalAlignment="Center" />
+                                    <TextBox x:Name="RuleNameContainsBox" Grid.Column="1" Height="30" ToolTip="Name contains" TextChanged="RuleEditor_Changed" AutomationProperties.Name="File name contains" />
+                                </Grid>
+                                <Grid Margin="0,8,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="92" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Extensions" FontSize="11" Foreground="{DynamicResource KdSecondary}" VerticalAlignment="Center" />
+                                    <TextBox x:Name="RuleExtensionBox" Grid.Column="1" Height="30" TextChanged="RuleEditor_Changed" AutomationProperties.Name="File extensions" />
+                                </Grid>
+                                <Grid Margin="0,8,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="92" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Source URL" FontSize="11" Foreground="{DynamicResource KdSecondary}" VerticalAlignment="Center" />
+                                    <TextBox x:Name="RuleSourceUrlBox" Grid.Column="1" Height="30" ToolTip="Source URL contains" TextChanged="RuleEditor_Changed" AutomationProperties.Name="Source URL contains" />
+                                </Grid>
+                                <Grid Margin="0,8,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="92" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Downloaded from" FontSize="11" Foreground="{DynamicResource KdSecondary}" VerticalAlignment="Center" />
+                                    <TextBox x:Name="RuleDownloadedFromBox" Grid.Column="1" Height="30" ToolTip="Downloaded-from contains" TextChanged="RuleEditor_Changed" AutomationProperties.Name="Downloaded from contains" />
+                                </Grid>
+                                <Border Height="1" Background="{DynamicResource KdBorder}" Margin="0,12,0,10" />
+
+                                <TextBlock Text="Action" FontSize="12" FontWeight="SemiBold" />
+                                <Grid Margin="0,8,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="92" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Target folder" FontSize="11" Foreground="{DynamicResource KdSecondary}" VerticalAlignment="Center" />
+                                    <TextBox x:Name="RuleTargetFolderBox" Grid.Column="1" Height="30" TextChanged="RuleEditor_Changed" AutomationProperties.Name="Target folder" />
+                                </Grid>
+                                <Grid Margin="0,8,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="92" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Target name" FontSize="11" Foreground="{DynamicResource KdSecondary}" VerticalAlignment="Center" />
+                                    <TextBox x:Name="RuleTargetNameBox" Grid.Column="1" Height="30" TextChanged="RuleEditor_Changed" AutomationProperties.Name="Target file name template" />
+                                </Grid>
+
+                                <Grid Margin="0,12,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <CheckBox x:Name="RuleAskCheck" Content="Ask first" Margin="0,0,8,0" Checked="RuleEditor_Changed" Unchecked="RuleEditor_Changed" />
+                                    <CheckBox x:Name="RuleStopCheck" Grid.Column="1" Content="Stop after match" Checked="RuleEditor_Changed" Unchecked="RuleEditor_Changed" />
+                                </Grid>
+
+                                <Grid Margin="0,0,0,8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Button Grid.Column="0" Height="30" Padding="0" Margin="0,0,6,0" Click="SaveRule_Click" Style="{StaticResource KdPrimaryButton}">
+                                        <TextBlock Text="Save" Foreground="{DynamicResource KdAccentInk}" />
+                                    </Button>
+                                    <Button Grid.Column="1" Content="Copy" Height="30" Padding="0" Margin="0,0,6,0" Click="DuplicateRule_Click" Style="{StaticResource KdGhostButton}" />
+                                    <Button Grid.Column="2" Content="Delete" Height="30" Padding="0" Margin="0,0,6,0" Click="DeleteRule_Click" Style="{StaticResource KdGhostButton}" />
+                                    <Button Grid.Column="3" Content="Up" Height="30" Padding="0" Margin="0,0,6,0" Click="MoveRuleUp_Click" Style="{StaticResource KdGhostButton}" />
+                                    <Button Grid.Column="4" Content="Down" Height="30" Padding="0" Click="MoveRuleDown_Click" Style="{StaticResource KdGhostButton}" />
+                                </Grid>
+                                <TextBlock x:Name="RuleStatusText" TextWrapping="Wrap" Foreground="{DynamicResource KdSecondary}" />
+                            </StackPanel>
+                            </Border>
+                        </Expander>
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
+        </Grid>
+    </Grid>
+</Window>

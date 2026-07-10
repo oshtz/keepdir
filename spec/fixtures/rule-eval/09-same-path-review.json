@@ -1,0 +1,31 @@
+{
+  "rules": [
+    {
+      "id": "rule-1",
+      "name": "No-op",
+      "enabled": true,
+      "order": 0,
+      "match": { "extensionIn": ["pdf"] },
+      "action": { "targetFolder": "" },
+      "stopOnMatch": true
+    }
+  ],
+  "fileName": "invoice.pdf",
+  "metadata": {},
+  "existingTargets": [],
+  "expected": {
+    "status": "needs_review",
+    "targetName": "invoice.pdf",
+    "ruleId": "rule-1",
+    "ruleName": "No-op",
+    "errorMessage": "Rule does not change this file",
+    "trace": [
+      {
+        "ruleId": "rule-1",
+        "matched": true,
+        "uncertain": false,
+        "reasons": ["extension is pdf"]
+      }
+    ]
+  }
+}

@@ -1,0 +1,126 @@
+name: Windows Native
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing release tag to publish Windows assets to
+        required: false
+        type: string
+
+jobs:
+  validate:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+      - name: Test
+        run: |
+          ./scripts/release-gate-smoke.ps1 -ExpectedVersion 0.1.0 -ExpectedMacBuild 1
+          $env:KEEPDIR_SCREENSHOT_DIR = "$PWD/spec/native-screenshots"
+          dotnet test native/windows/KeepDir.sln --configuration Release
+          ./scripts/assert-png.ps1 -Path spec/native-screenshots/windows-*-*.png -MinWidth 800 -MinHeight 500 -MinDistinctPixels 16
+          $screenshots = @(Get-ChildItem spec/native-screenshots/windows-*-*.png)
+          if ($screenshots.Count -ne 8) { throw "Expected 8 Windows visual states, found $($screenshots.Count)." }
+          $screenshots | ForEach-Object {
+            $parts = $_.BaseName.Split('-')
+            $theme = $parts[1]
+            $state = $parts[2]
+            python scripts/compare-png.py $_.FullName "spec/reference-screenshots/$theme-$state.png" --max-difference 0.15
+          }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: KeepDir-Windows-screenshots
+          path: spec/native-screenshots/windows-*-*.png
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.release_tag != '')
+    needs: validate
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref }}
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+      - name: Verify release ref and version
+        run: |
+          $tag = $env:RELEASE_TAG
+          if ($tag -notmatch '^v(?<version>\d+\.\d+\.\d+)$') { throw "Release tag must match vMAJOR.MINOR.PATCH: $tag" }
+          $version = $Matches.version
+          $tagCommit = (git rev-list -n 1 $tag).Trim()
+          $headCommit = (git rev-parse HEAD).Trim()
+          if ($headCommit -ne $tagCommit) { throw "Checked out $headCommit but $tag points to $tagCommit" }
+          "APP_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "BUILD_COMMIT=$headCommit" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+      - name: Record unsigned Windows policy
+        run: Write-Warning "Publishing an unsigned Windows executable; SmartScreen may warn users."
+      - name: Publish small exe
+        run: |
+          dotnet publish native/windows/KeepDir.App/KeepDir.App.csproj `
+            --configuration Release `
+            --runtime win-x64 `
+            --self-contained false `
+            -p:PublishSingleFile=true `
+            -p:DebugType=None `
+            -p:DebugSymbols=false `
+            -p:Version=$env:APP_VERSION `
+            -p:AssemblyVersion="$env:APP_VERSION.0" `
+            -p:FileVersion="$env:APP_VERSION.0" `
+            -p:InformationalVersion="$env:APP_VERSION+$env:BUILD_COMMIT" `
+            --output artifacts/windows
+      - name: Stage release assets
+        run: |
+          New-Item -ItemType Directory -Force release | Out-Null
+          Copy-Item -LiteralPath artifacts/windows/KeepDir.App.exe -Destination release/KeepDir-windows-x64.exe -Force
+          $exe = Get-Item -LiteralPath release/KeepDir-windows-x64.exe
+          if ($exe.Length -lt 100000) { throw "Windows exe is unexpectedly small: $($exe.Length)" }
+          if ($exe.Length -gt 5000000) { throw "Windows exe is too large for framework-dependent release: $($exe.Length)" }
+      - name: Smoke packaged Windows app
+        run: ./scripts/windows-packaged-smoke.ps1 -AppPath release/KeepDir-windows-x64.exe
+      - name: Generate checksum
+        run: |
+          $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath release/KeepDir-windows-x64.exe).Hash.ToLowerInvariant()
+          "$hash  KeepDir-windows-x64.exe" | Set-Content -LiteralPath release/SHA256SUMS-windows.txt -NoNewline
+      - name: Verify Windows artifact metadata
+        run: ./scripts/verify-windows-release.ps1 -ExePath release/KeepDir-windows-x64.exe -ChecksumPath release/SHA256SUMS-windows.txt -ExpectedVersion $env:APP_VERSION -ExpectedCommit $env:BUILD_COMMIT
+      - uses: actions/upload-artifact@v4
+        with:
+          name: KeepDir-windows-release
+          path: release/
+      - name: Publish GitHub release assets
+        run: |
+          $tag = $env:RELEASE_TAG
+          $release = gh release view $tag --json tagName 2>$null
+          if ($LASTEXITCODE -eq 0) {
+            $existing = @(gh release view $tag --json assets --jq '.assets[].name')
+            $duplicates = @('KeepDir-windows-x64.exe', 'SHA256SUMS-windows.txt') | Where-Object { $existing -contains $_ }
+            if ($duplicates) { throw "Release $tag already contains immutable Windows assets: $($duplicates -join ', ')" }
+            gh release upload $tag release/KeepDir-windows-x64.exe release/SHA256SUMS-windows.txt
+          } else {
+            gh release create $tag release/KeepDir-windows-x64.exe release/SHA256SUMS-windows.txt --title "KeepDir $tag" --notes "KeepDir release."
+            if ($LASTEXITCODE -ne 0) {
+              gh release upload $tag release/KeepDir-windows-x64.exe release/SHA256SUMS-windows.txt
+            }
+          }
+      - name: Verify published Windows assets
+        run: |
+          $download = Join-Path $env:RUNNER_TEMP "keepdir-published-windows"
+          New-Item -ItemType Directory -Force $download | Out-Null
+          gh release download $env:RELEASE_TAG --pattern KeepDir-windows-x64.exe --pattern SHA256SUMS-windows.txt --dir $download
+          ./scripts/verify-windows-release.ps1 -ExePath "$download/KeepDir-windows-x64.exe" -ChecksumPath "$download/SHA256SUMS-windows.txt" -ExpectedVersion $env:APP_VERSION -ExpectedCommit $env:BUILD_COMMIT

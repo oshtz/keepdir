@@ -1,0 +1,31 @@
+{
+  "rules": [
+    {
+      "id": "rule-1",
+      "name": "Everything",
+      "enabled": true,
+      "order": 0,
+      "match": {},
+      "action": { "targetFolder": "Inbox" },
+      "stopOnMatch": true
+    }
+  ],
+  "fileName": "anything.tmp",
+  "metadata": {},
+  "existingTargets": [],
+  "expected": {
+    "status": "pending",
+    "targetPathSuffix": "Inbox\\anything.tmp",
+    "targetName": "anything.tmp",
+    "ruleId": "rule-1",
+    "ruleName": "Everything",
+    "trace": [
+      {
+        "ruleId": "rule-1",
+        "matched": true,
+        "uncertain": false,
+        "reasons": ["matched all files"]
+      }
+    ]
+  }
+}

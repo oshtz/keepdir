@@ -1,0 +1,30 @@
+{
+  "rules": [
+    {
+      "id": "rule-1",
+      "name": "Unsafe",
+      "enabled": true,
+      "order": 0,
+      "match": { "extensionIn": ["pdf"] },
+      "action": { "targetFolder": "..\\outside" },
+      "stopOnMatch": true
+    }
+  ],
+  "fileName": "invoice.pdf",
+  "metadata": {},
+  "existingTargets": [],
+  "expected": {
+    "status": "error",
+    "ruleId": "rule-1",
+    "ruleName": "Unsafe",
+    "errorMessage": "Target folder must stay inside the watched folder",
+    "trace": [
+      {
+        "ruleId": "rule-1",
+        "matched": true,
+        "uncertain": false,
+        "reasons": ["extension is pdf"]
+      }
+    ]
+  }
+}

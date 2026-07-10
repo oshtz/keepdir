@@ -1,0 +1,31 @@
+{
+  "rules": [
+    {
+      "id": "rule-1",
+      "name": "Downloads",
+      "enabled": true,
+      "order": 0,
+      "match": { "sourceUrlContains": "example.com" },
+      "action": { "targetFolder": "Downloads" },
+      "stopOnMatch": true
+    }
+  ],
+  "fileName": "download.bin",
+  "metadata": { "sourceUrl": "https://example.com/file", "downloadedFrom": null },
+  "existingTargets": [],
+  "expected": {
+    "status": "pending",
+    "targetPathSuffix": "Downloads\\download.bin",
+    "targetName": "download.bin",
+    "ruleId": "rule-1",
+    "ruleName": "Downloads",
+    "trace": [
+      {
+        "ruleId": "rule-1",
+        "matched": true,
+        "uncertain": false,
+        "reasons": ["source URL contains \"example.com\""]
+      }
+    ]
+  }
+}

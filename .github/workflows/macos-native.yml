@@ -1,0 +1,193 @@
+name: macOS Native
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing release tag to publish macOS assets to
+        required: false
+        type: string
+
+jobs:
+  validate:
+    runs-on: macos-14
+    defaults:
+      run:
+        working-directory: native/macos
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Check release gates
+        run: pwsh ../../scripts/release-gate-smoke.ps1 -ExpectedVersion 0.1.0 -ExpectedMacBuild 1
+      - name: Build SwiftUI app shell
+        run: |
+          swift build --configuration release --product KeepDirMacApp --arch arm64
+          swift build --configuration release --product KeepDirMacApp --arch x86_64
+      - name: Test Swift core
+        run: swift test
+      - name: Package app bundle
+        run: |
+          rm -rf artifacts
+          mkdir -p artifacts/KeepDir.app/Contents/MacOS artifacts/KeepDir.app/Contents/Resources
+          lipo -create \
+            .build/arm64-apple-macosx/release/KeepDirMacApp \
+            .build/x86_64-apple-macosx/release/KeepDirMacApp \
+            -output artifacts/KeepDir.app/Contents/MacOS/KeepDir
+          cp Packaging/Info.plist artifacts/KeepDir.app/Contents/Info.plist
+          cp Packaging/KeepDir.icns artifacts/KeepDir.app/Contents/Resources/KeepDir.icns
+          cp Sources/KeepDirMacApp/Resources/PlusJakartaSans.ttf artifacts/KeepDir.app/Contents/Resources/
+          cp Sources/KeepDirMacApp/Resources/JetBrainsMono.ttf artifacts/KeepDir.app/Contents/Resources/
+          cp Sources/KeepDirMacApp/Resources/icon.png artifacts/KeepDir.app/Contents/Resources/
+          cp Sources/KeepDirMacApp/Resources/icon.svg artifacts/KeepDir.app/Contents/Resources/
+          chmod +x artifacts/KeepDir.app/Contents/MacOS/KeepDir
+          lipo -info artifacts/KeepDir.app/Contents/MacOS/KeepDir
+      - name: Smoke packaged app
+        run: bash ../../scripts/macos-app-smoke.sh artifacts/KeepDir.app
+      - name: Smoke conflict UI cycle
+        run: bash ../../scripts/macos-conflict-ui-smoke.sh artifacts/KeepDir.app
+      - name: Capture app screenshots
+        run: bash ../../scripts/capture-macos-screenshots.sh artifacts/KeepDir.app ../../spec/native-screenshots
+      - name: Validate screenshots
+        working-directory: .
+        run: |
+          pwsh ./scripts/assert-png.ps1 -Path 'spec/native-screenshots/macos-*.png' -MinWidth 800 -MinHeight 500 -MinDistinctPixels 16
+          test "$(find spec/native-screenshots -maxdepth 1 -name 'macos-*-*.png' | wc -l | tr -d ' ')" = "8"
+          for screenshot in spec/native-screenshots/macos-*.png; do
+            name="$(basename "$screenshot" .png)"
+            theme="$(echo "$name" | cut -d- -f2)"
+            state="$(echo "$name" | cut -d- -f3)"
+            python3 scripts/compare-png.py "$screenshot" "spec/reference-screenshots/$theme-$state.png" --max-difference 0.15
+          done
+      - uses: actions/upload-artifact@v4
+        if: ${{ always() }}
+        with:
+          name: KeepDir-macOS-screenshots
+          path: spec/native-screenshots/macos-*.png
+  release:
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.release_tag != '')
+    needs: validate
+    runs-on: macos-14
+    permissions:
+      contents: write
+    env:
+      APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
+    defaults:
+      run:
+        working-directory: native/macos
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref }}
+      - name: Verify release ref and version
+        run: |
+          tag="$RELEASE_TAG"
+          [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "Release tag must match vMAJOR.MINOR.PATCH: $tag"; exit 1; }
+          version="${tag#v}"
+          tag_commit="$(git rev-list -n 1 "$tag")"
+          head_commit="$(git rev-parse HEAD)"
+          test "$head_commit" = "$tag_commit" || { echo "Checked out $head_commit but $tag points to $tag_commit"; exit 1; }
+          echo "APP_VERSION=$version" >> "$GITHUB_ENV"
+          echo "BUILD_COMMIT=$head_commit" >> "$GITHUB_ENV"
+      - name: Check signing inputs
+        run: |
+          test -n "$APPLE_CERTIFICATE" || { echo "Missing APPLE_CERTIFICATE"; exit 1; }
+          test -n "$APPLE_CERTIFICATE_PASSWORD" || { echo "Missing APPLE_CERTIFICATE_PASSWORD"; exit 1; }
+          test -n "$APPLE_ID" || { echo "Missing APPLE_ID"; exit 1; }
+          test -n "$APPLE_PASSWORD" || { echo "Missing APPLE_PASSWORD"; exit 1; }
+          test -n "$APPLE_TEAM_ID" || { echo "Missing APPLE_TEAM_ID"; exit 1; }
+      - name: Build SwiftUI app shell
+        run: |
+          swift build --configuration release --product KeepDirMacApp --arch arm64
+          swift build --configuration release --product KeepDirMacApp --arch x86_64
+      - name: Test Swift core
+        run: swift test
+      - name: Package app bundle
+        run: |
+          rm -rf artifacts release
+          mkdir -p artifacts/KeepDir.app/Contents/MacOS artifacts/KeepDir.app/Contents/Resources release
+          lipo -create \
+            .build/arm64-apple-macosx/release/KeepDirMacApp \
+            .build/x86_64-apple-macosx/release/KeepDirMacApp \
+            -output artifacts/KeepDir.app/Contents/MacOS/KeepDir
+          cp Packaging/Info.plist artifacts/KeepDir.app/Contents/Info.plist
+          cp Packaging/KeepDir.icns artifacts/KeepDir.app/Contents/Resources/KeepDir.icns
+          cp Sources/KeepDirMacApp/Resources/PlusJakartaSans.ttf artifacts/KeepDir.app/Contents/Resources/
+          cp Sources/KeepDirMacApp/Resources/JetBrainsMono.ttf artifacts/KeepDir.app/Contents/Resources/
+          cp Sources/KeepDirMacApp/Resources/icon.png artifacts/KeepDir.app/Contents/Resources/
+          cp Sources/KeepDirMacApp/Resources/icon.svg artifacts/KeepDir.app/Contents/Resources/
+          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $APP_VERSION" artifacts/KeepDir.app/Contents/Info.plist
+          chmod +x artifacts/KeepDir.app/Contents/MacOS/KeepDir
+          lipo -info artifacts/KeepDir.app/Contents/MacOS/KeepDir
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' artifacts/KeepDir.app/Contents/Info.plist)" = "$APP_VERSION"
+          [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' artifacts/KeepDir.app/Contents/Info.plist)" =~ ^[1-9][0-9]*$ ]]
+      - name: Sign app
+        run: |
+          KEYCHAIN="$RUNNER_TEMP/keepdir-signing.keychain-db"
+          security create-keychain -p "$RUNNER_TEMP" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$RUNNER_TEMP" "$KEYCHAIN"
+          echo "$APPLE_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security import "$RUNNER_TEMP/cert.p12" -P "$APPLE_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN"
+          security list-keychain -d user -s "$KEYCHAIN"
+          IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN" | awk -F '"' '/Developer ID Application/ { print $2; exit }')
+          test -n "$IDENTITY" || { echo "Developer ID Application identity not found"; exit 1; }
+          codesign --force --deep --options runtime --timestamp --sign "$IDENTITY" artifacts/KeepDir.app
+          codesign --verify --deep --strict --verbose=2 artifacts/KeepDir.app
+      - name: Create DMG
+        run: |
+          mkdir -p artifacts/dmg
+          cp -R artifacts/KeepDir.app artifacts/dmg/
+          ln -s /Applications artifacts/dmg/Applications
+          hdiutil create -volname KeepDir -srcfolder artifacts/dmg -ov -format UDZO release/KeepDir-macOS.dmg
+      - name: Notarize DMG
+        run: |
+          xcrun notarytool submit release/KeepDir-macOS.dmg --apple-id "$APPLE_ID" --password "$APPLE_PASSWORD" --team-id "$APPLE_TEAM_ID" --wait
+          xcrun stapler staple release/KeepDir-macOS.dmg
+          xcrun stapler validate release/KeepDir-macOS.dmg
+      - name: Smoke notarized DMG
+        run: bash ../../scripts/macos-dmg-smoke.sh release/KeepDir-macOS.dmg
+      - name: Generate checksum
+        run: |
+          cd release
+          shasum -a 256 KeepDir-macOS.dmg > SHA256SUMS-macos.txt
+          shasum -a 256 -c SHA256SUMS-macos.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: KeepDir-macOS-release
+          path: native/macos/release/
+      - name: Publish GitHub release assets
+        run: |
+          tag="$RELEASE_TAG"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            existing="$(gh release view "$tag" --json assets --jq '.assets[].name')"
+            for asset in KeepDir-macOS.dmg SHA256SUMS-macos.txt; do
+              if printf '%s\n' "$existing" | grep -Fxq "$asset"; then
+                echo "Release $tag already contains immutable macOS asset: $asset" >&2
+                exit 1
+              fi
+            done
+            gh release upload "$tag" release/KeepDir-macOS.dmg release/SHA256SUMS-macos.txt
+          else
+            gh release create "$tag" release/KeepDir-macOS.dmg release/SHA256SUMS-macos.txt --title "KeepDir $tag" --notes "KeepDir release." ||
+              gh release upload "$tag" release/KeepDir-macOS.dmg release/SHA256SUMS-macos.txt
+          fi
+      - name: Verify published macOS assets
+        run: |
+          download="$RUNNER_TEMP/keepdir-published-macos"
+          mkdir -p "$download"
+          gh release download "$RELEASE_TAG" --pattern KeepDir-macOS.dmg --pattern SHA256SUMS-macos.txt --dir "$download"
+          cd "$download"
+          shasum -a 256 -c SHA256SUMS-macos.txt
+          xcrun stapler validate KeepDir-macOS.dmg

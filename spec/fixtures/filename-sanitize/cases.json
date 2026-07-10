@@ -1,0 +1,10 @@
+{
+  "cases": [
+    { "input": "CON.txt", "output": "CON_.txt" },
+    { "input": "lpt9", "output": "lpt9_" },
+    { "input": "invoice.txt", "output": "invoice.txt" },
+    { "input": "  report?.pdf. ", "output": "report_.pdf" },
+    { "input": "bad<name>|x", "output": "bad_name__x" },
+    { "input": "...", "error": "Target filename is empty after sanitizing" }
+  ]
+}

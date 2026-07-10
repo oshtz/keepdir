@@ -1,0 +1,30 @@
+{
+  "rules": [
+    {
+      "id": "rule-1",
+      "name": "Docs",
+      "enabled": true,
+      "order": 0,
+      "match": { "extensionIn": ["pdf"] },
+      "action": { "targetFolder": "Documents", "ask": true },
+      "stopOnMatch": true
+    }
+  ],
+  "fileName": "invoice.pdf",
+  "metadata": {},
+  "existingTargets": [],
+  "expected": {
+    "status": "needs_review",
+    "ruleId": "rule-1",
+    "ruleName": "Docs",
+    "errorMessage": "Rule is set to ask before acting",
+    "trace": [
+      {
+        "ruleId": "rule-1",
+        "matched": true,
+        "uncertain": false,
+        "reasons": ["extension is pdf"]
+      }
+    ]
+  }
+}

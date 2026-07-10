@@ -1,0 +1,26 @@
+{
+  "settings": {
+    "theme": "dark",
+    "unknownArray": [1, { "x": true }]
+  },
+  "workspaceSettings": {
+    "default": {
+      "opaque": { "nested": "yes" },
+      "queueUnmatchedFiles": true
+    }
+  },
+  "watchFolders": {
+    "default": [
+      {
+        "id": "watch-1",
+        "path": "C:\\watched",
+        "enabled": true,
+        "recursive": false,
+        "createdAt": "123"
+      }
+    ]
+  },
+  "ruleActions": {
+    "default": []
+  }
+}

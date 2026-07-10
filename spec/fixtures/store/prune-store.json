@@ -1,0 +1,48 @@
+{
+  "settings": {},
+  "workspaceSettings": {},
+  "watchFolders": {},
+  "ruleActions": {
+    "default": [
+      {
+        "id": "old",
+        "workspaceId": "default",
+        "folderPath": "C:\\watched",
+        "filePath": "C:\\watched\\old.pdf",
+        "originalName": "old.pdf",
+        "ruleTrace": [],
+        "status": "skipped",
+        "fileSize": 1,
+        "fileMtimeMs": 2,
+        "createdAt": "1",
+        "updatedAt": "1"
+      },
+      {
+        "id": "recent",
+        "workspaceId": "default",
+        "folderPath": "C:\\watched",
+        "filePath": "C:\\watched\\recent.pdf",
+        "originalName": "recent.pdf",
+        "ruleTrace": [],
+        "status": "skipped",
+        "fileSize": 1,
+        "fileMtimeMs": 2,
+        "createdAt": "9999999999999",
+        "updatedAt": "9999999999999"
+      },
+      {
+        "id": "pending",
+        "workspaceId": "default",
+        "folderPath": "C:\\watched",
+        "filePath": "C:\\watched\\pending.pdf",
+        "originalName": "pending.pdf",
+        "ruleTrace": [],
+        "status": "pending",
+        "fileSize": 1,
+        "fileMtimeMs": 2,
+        "createdAt": "1",
+        "updatedAt": "1"
+      }
+    ]
+  }
+}

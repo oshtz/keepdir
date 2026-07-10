@@ -1,0 +1,46 @@
+{
+  "rules": [
+    {
+      "id": "rule-1",
+      "name": "Docs",
+      "enabled": true,
+      "order": 0,
+      "match": { "extensionIn": ["pdf"] },
+      "action": { "targetFolder": "Documents" },
+      "stopOnMatch": false
+    },
+    {
+      "id": "rule-2",
+      "name": "Rename",
+      "enabled": true,
+      "order": 1,
+      "match": { "extensionIn": ["pdf"] },
+      "action": { "targetNameTemplate": "{basename}-{date}.{ext}" },
+      "stopOnMatch": true
+    }
+  ],
+  "fileName": "Invoice.PDF",
+  "metadata": {},
+  "existingTargets": [],
+  "expected": {
+    "status": "pending",
+    "targetPathSuffix": "Documents\\Invoice-{today}.pdf",
+    "targetName": "Invoice-{today}.pdf",
+    "ruleId": "rule-2",
+    "ruleName": "Rename",
+    "trace": [
+      {
+        "ruleId": "rule-1",
+        "matched": true,
+        "uncertain": false,
+        "reasons": ["extension is pdf"]
+      },
+      {
+        "ruleId": "rule-2",
+        "matched": true,
+        "uncertain": false,
+        "reasons": ["extension is pdf"]
+      }
+    ]
+  }
+}

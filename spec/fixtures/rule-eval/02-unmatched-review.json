@@ -1,0 +1,30 @@
+{
+  "rules": [
+    {
+      "id": "rule-1",
+      "name": "Docs",
+      "enabled": true,
+      "order": 0,
+      "match": { "extensionIn": ["pdf"] },
+      "action": { "targetFolder": "Documents" },
+      "stopOnMatch": true
+    }
+  ],
+  "fileName": "photo.png",
+  "metadata": {},
+  "existingTargets": [],
+  "expected": {
+    "status": "needs_review",
+    "ruleId": null,
+    "ruleName": null,
+    "errorMessage": "No rule matched",
+    "trace": [
+      {
+        "ruleId": "rule-1",
+        "matched": false,
+        "uncertain": false,
+        "reasons": ["extension is not pdf"]
+      }
+    ]
+  }
+}

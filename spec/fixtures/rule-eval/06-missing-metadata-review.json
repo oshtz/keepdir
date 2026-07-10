@@ -1,0 +1,30 @@
+{
+  "rules": [
+    {
+      "id": "rule-1",
+      "name": "Browser downloads",
+      "enabled": true,
+      "order": 0,
+      "match": { "downloadedFromContains": "Chrome" },
+      "action": { "targetFolder": "Downloads" },
+      "stopOnMatch": true
+    }
+  ],
+  "fileName": "download.bin",
+  "metadata": {},
+  "existingTargets": [],
+  "expected": {
+    "status": "needs_review",
+    "ruleId": "rule-1",
+    "ruleName": "Browser downloads",
+    "errorMessage": "downloaded-from metadata unavailable",
+    "trace": [
+      {
+        "ruleId": "rule-1",
+        "matched": true,
+        "uncertain": true,
+        "reasons": ["downloaded-from metadata unavailable"]
+      }
+    ]
+  }
+}
